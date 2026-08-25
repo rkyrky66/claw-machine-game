@@ -1,19 +1,39 @@
-// ==================== 物理常數（修正版） ====================
+// ==================== 物理常數（完整修正版） ====================
 const PHYSICS_CONSTANTS = {
-    ROPE_MAX_LENGTH: 700,        // 繩索最大長度（像素）
-    ROPE_MIN_LENGTH: 100,        // 繩索最小長度
-    DROP_SPEED: 5,               // 繩索釋放速度（像素/幀）
-    LIFT_SPEED: 6,               // 繩索回收速度（像素/幀）
-    TROLLEY_SPEED: 8,            // 天車移動速度
-    GRAVITY: 0.5,                // 重力加速度
-    PENDULUM_DAMPING: 0.98,      // 擺動阻尼
-    AIR_RESISTANCE: 0.99,        // 空氣阻力
-    CLAW_MASS: 1,                // 爪子質量
-    SLANT_LIMIT: 35,             // 最大擺動角度
-    HOLE_WIDTH_PERCENT: 15,      // 洞口寬度百分比
-    GRAB_WAIT_FRAMES: 45,        // 抓取等待幀數
-    CLAW_GRIP_STRENGTH: 0.7,     // 抓力
-    SLIP_FACTOR: 0.15            // 滑脫機率
+    // 天車參數
+    TROLLEY_MAX_SPEED: 12,        // 天車最大速度
+    TROLLEY_ACCELERATION: 0.8,    // 天車加速度
+    TROLLEY_FRICTION: 0.9,        // 天車摩擦力
+    
+    // 繩索參數
+    ROPE_MAX_LENGTH: 700,          // 繩索最大長度
+    ROPE_MIN_LENGTH: 100,          // 繩索最小長度
+    ROPE_RELEASE_SPEED: 4,         // 繩索釋放速度
+    ROPE_RETRACT_SPEED: 5,         // 繩索回收速度
+    
+    // 爪子物理
+    CLAW_MASS: 1.0,                // 爪子質量
+    CLAW_GRAVITY: 0.8,             // 爪子重力
+    PENDULUM_DAMPING: 0.985,       // 擺動阻尼
+    AIR_RESISTANCE: 0.995,         // 空氣阻力
+    SLANT_LIMIT: 40,               // 最大擺動角度（度）
+    BOUNDARY_BOUNCE: 0.3,          // 邊界反彈係數
+    
+    // 抓取參數
+    GRAB_WAIT_FRAMES: 30,          // 抓取等待幀數
+    CLAW_GRIP_STRENGTH: 0.7,       // 爪子抓力
+    SLIP_FACTOR: 0.15,             // 滑脫機率
+    CLAW_OPEN_ANGLE: 30,           // 爪子張開角度
+    CLAW_CLOSE_SPEED: 0.08,        // 爪子閉合速度
+    
+    // 洞口參數
+    HOLE_WIDTH_PERCENT: 15,        // 洞口寬度百分比
+    
+    // 獎品參數
+    PRIZE_FRICTION: 0.85,          // 獎品摩擦力
+    PRIZE_BOUNCE: 0.3,             // 獎品彈性
+    WEIGHT_INFLUENCE: 0.4,         // 重量影響係數
+    RELEASE_IMPULSE: 150,          // 釋放衝量
 };
 
 // ==================== 初始獎品數據 ====================
@@ -72,27 +92,33 @@ const INITIAL_PRIZES = [
     }
 ];
 
-// ==================== 遊戲場景（正確物理版） ====================
+// ==================== 遊戲場景（完整修正版） ====================
 class GameScene extends Phaser.Scene {
     constructor() {
         super({ key: 'GameScene' });
         
         // 天車狀態
-        this.trolleyX = 270;           // 天車位置（像素）
-        this.trolleyTargetX = 270;     // 天車目標位置
-        this.trolleyVelocity = 0;      // 天車速度
+        this.trolleyX = 270;
+        this.trolleyTargetX = 270;
+        this.trolleyVelocity = 0;
+        this.trolleyAcceleration = 0;
+        this.previousTrolleyVelocity = 0;
+        this.isTrolleyMoving = false;
         
         // 繩索狀態
         this.ropeLength = PHYSICS_CONSTANTS.ROPE_MIN_LENGTH;
         this.ropeTargetLength = PHYSICS_CONSTANTS.ROPE_MIN_LENGTH;
+        this.isRopeReleasing = false;
+        this.isRopeRetracting = false;
         
         // 爪子狀態
-        this.clawX = 270;              // 爪子實際位置
-        this.clawY = PHYSICS_CONSTANTS.ROPE_MIN_LENGTH;
-        this.clawVelocityX = 0;        // 爪子水平速度
-        this.clawVelocityY = 0;        // 爪子垂直速度
-        this.clawAngle = 0;            // 爪子擺動角度
-        this.clawAngularVel = 0;       // 爪子角速度
+        this.clawX = 270;
+        this.clawY = 150;
+        this.clawAngle = 0;
+        this.clawAngularVel = 0;
+        this.clawVelocityY = 0;
+        this.clawOpenAmount = 1;
+        this.isClawClosing = false;
         
         // 遊戲狀態
         this.gameState = 'idle';
@@ -100,14 +126,14 @@ class GameScene extends Phaser.Scene {
         this.caughtPrizeId = null;
         this.caughtPrize = null;
         
-        // 物理參數
+        // 物理狀態
         this.frameCount = 0;
         this.grabbingStartFrame = 0;
-        this.score = 0;
+        this.isGrabbing = false;
+        this.grabCheckDone = false;
         
-        // 爪子開合
-        this.clawOpenAmount = 1;
-        this.isClawClosing = false;
+        // 分數
+        this.score = 0;
         
         // 獎品
         this.prizes = [];
@@ -116,7 +142,8 @@ class GameScene extends Phaser.Scene {
     create() {
         this.createBackground();
         this.createPrizes();
-        this.createTrolleyAndRope();
+        this.createTrolley();
+        this.createRope();
         this.createClaw();
         this.createUI();
         this.setupInput();
@@ -126,11 +153,15 @@ class GameScene extends Phaser.Scene {
     createBackground() {
         this.add.rectangle(270, 480, 540, 960, 0x1a1a1a);
         
-        // 軌道（天車移動的軌道）
+        // 軌道
         const trackGraphics = this.add.graphics();
-        trackGraphics.lineStyle(3, 0x444444);
-        trackGraphics.moveTo(20, 50);
-        trackGraphics.lineTo(520, 50);
+        trackGraphics.lineStyle(4, 0x555555);
+        trackGraphics.moveTo(10, 50);
+        trackGraphics.lineTo(530, 50);
+        trackGraphics.strokePath();
+        trackGraphics.lineStyle(2, 0x333333);
+        trackGraphics.moveTo(10, 55);
+        trackGraphics.lineTo(530, 55);
         trackGraphics.strokePath();
         
         // 網格
@@ -151,10 +182,14 @@ class GameScene extends Phaser.Scene {
         const holeGraphics = this.add.graphics();
         holeGraphics.fillStyle(0xff00ff, 0.2);
         holeGraphics.fillRect(0, 816, this.holeWidth, 144);
+        holeGraphics.lineStyle(2, 0xff00ff, 0.5);
+        holeGraphics.strokeRect(0, 816, this.holeWidth, 144);
         
         // 地面
         this.floorY = 816;
-        this.add.rectangle(270, this.floorY, 540, 5, 0x00f3ff);
+        const groundGraphics = this.add.graphics();
+        groundGraphics.fillStyle(0x00f3ff, 1);
+        groundGraphics.fillRect(0, this.floorY, 540, 5);
         
         // GOAL文字
         this.add.text(this.holeWidth / 2, 880, 'GOAL', {
@@ -218,38 +253,38 @@ class GameScene extends Phaser.Scene {
         return points;
     }
     
-    createTrolleyAndRope() {
-        // 天車（固定在軌道上）
+    createTrolley() {
         this.trolley = this.add.container(this.trolleyX, 50);
         
-        const trolleyBody = this.add.graphics();
-        trolleyBody.fillStyle(0xff6600, 1);
-        trolleyBody.fillRoundedRect(-20, -15, 40, 30, 5);
-        trolleyBody.fillStyle(0xff8833, 1);
-        trolleyBody.fillRoundedRect(-15, -10, 30, 20, 3);
+        const trolleyGraphics = this.add.graphics();
+        // 天車主體
+        trolleyGraphics.fillStyle(0xff6600, 1);
+        trolleyGraphics.fillRoundedRect(-25, -15, 50, 30, 5);
+        // 天車輪子
+        trolleyGraphics.fillStyle(0x333333, 1);
+        trolleyGraphics.fillCircle(-15, 10, 5);
+        trolleyGraphics.fillCircle(15, 10, 5);
+        // 天車掛鉤
+        trolleyGraphics.fillStyle(0xff8833, 1);
+        trolleyGraphics.fillRect(-3, 15, 6, 10);
         
-        this.trolley.add(trolleyBody);
-        
-        // 繩索（頂端固定在天車上）
+        this.trolley.add(trolleyGraphics);
+    }
+    
+    createRope() {
         this.ropeGraphics = this.add.graphics();
-        
-        // 繩索視覺更新
         this.updateRopeVisual();
     }
     
     createClaw() {
-        // 爪子容器（初始位置在天車正下方）
         this.clawContainer = this.add.container(this.clawX, this.clawY);
         
-        // 爪子本體
         this.clawBody = this.add.graphics();
         this.drawClawBody();
         
-        // 左爪
         this.clawLeft = this.add.graphics();
         this.drawClawLeft();
         
-        // 右爪
         this.clawRight = this.add.graphics();
         this.drawClawRight();
         
@@ -260,6 +295,8 @@ class GameScene extends Phaser.Scene {
         this.clawBody.clear();
         this.clawBody.fillStyle(0x888888, 1);
         this.clawBody.fillRoundedRect(-25, -35, 50, 70, 15);
+        this.clawBody.fillStyle(0x999999, 1);
+        this.clawBody.fillRoundedRect(-20, -25, 40, 50, 10);
     }
     
     drawClawLeft() {
@@ -359,6 +396,8 @@ class GameScene extends Phaser.Scene {
         this.gameState = 'dropping';
         this.statusText.setText('繩索釋放中...');
         this.ropeTargetLength = PHYSICS_CONSTANTS.ROPE_MAX_LENGTH;
+        this.isRopeReleasing = true;
+        this.clawVelocityY = 0;
         this.isClawClosing = false;
         this.clawOpenAmount = 1;
     }
@@ -367,110 +406,187 @@ class GameScene extends Phaser.Scene {
         this.ropeGraphics.clear();
         this.ropeGraphics.lineStyle(3, 0xcccccc);
         this.ropeGraphics.beginPath();
-        this.ropeGraphics.moveTo(this.trolley.x, this.trolley.y);
-        this.ropeGraphics.lineTo(this.clawContainer.x, this.clawContainer.y);
+        this.ropeGraphics.moveTo(this.trolley.x, this.trolley.y + 15);
+        this.ropeGraphics.lineTo(this.clawContainer.x, this.clawContainer.y - 35);
         this.ropeGraphics.strokePath();
     }
     
     update(time, delta) {
         this.frameCount++;
         
-        // 更新天車位置（平滑移動）
-        const trolleyDx = this.trolleyTargetX - this.trolleyX;
-        this.trolleyVelocity = trolleyDx * 0.2;
-        this.trolleyX += this.trolleyVelocity;
-        this.trolley.x = this.trolleyX;
+        // 更新天車物理
+        this.updateTrolleyPhysics();
         
-        // 更新繩索長度
-        if (this.gameState === 'dropping') {
-            if (this.ropeLength < this.ropeTargetLength) {
-                this.ropeLength += PHYSICS_CONSTANTS.DROP_SPEED;
-                if (this.ropeLength >= this.ropeTargetLength) {
-                    this.ropeLength = this.ropeTargetLength;
-                    this.checkGrab();
-                }
-            }
-        } else if (this.gameState === 'lifting') {
-            if (this.ropeLength > PHYSICS_CONSTANTS.ROPE_MIN_LENGTH) {
-                this.ropeLength -= PHYSICS_CONSTANTS.LIFT_SPEED;
-                if (this.ropeLength <= PHYSICS_CONSTANTS.ROPE_MIN_LENGTH) {
-                    this.ropeLength = PHYSICS_CONSTANTS.ROPE_MIN_LENGTH;
-                    this.completeLifting();
-                }
-            }
-        }
+        // 更新繩索物理
+        this.updateRopePhysics();
         
-        // 更新爪子物理（鐘擺運動）
+        // 更新爪子物理
         this.updateClawPhysics();
         
         // 更新爪子位置
         this.updateClawPosition();
         
-        // 更新繩索視覺
-        this.updateRopeVisual();
+        // 更新抓取判定
+        this.updateGrabCheck();
         
         // 更新被抓取的獎品
         this.updateCaughtPrize();
         
         // 更新動量條
         this.updateMomentumBar();
+        
+        // 更新繩索視覺
+        this.updateRopeVisual();
+    }
+    
+    updateTrolleyPhysics() {
+        // 保存前一次速度（用於計算加速度）
+        this.previousTrolleyVelocity = this.trolleyVelocity;
+        
+        if (this.isDragging) {
+            // 玩家拖動時，計算目標速度
+            const dx = this.trolleyTargetX - this.trolleyX;
+            const targetVelocity = dx * 0.15;
+            
+            // 限制最大速度
+            this.trolleyVelocity = Phaser.Math.Clamp(
+                targetVelocity,
+                -PHYSICS_CONSTANTS.TROLLEY_MAX_SPEED,
+                PHYSICS_CONSTANTS.TROLLEY_MAX_SPEED
+            );
+            
+            // 平滑加速
+            this.trolleyX += this.trolleyVelocity;
+            this.isTrolleyMoving = Math.abs(this.trolleyVelocity) > 0.1;
+        } else {
+            // 慣性滑行
+            this.trolleyVelocity *= PHYSICS_CONSTANTS.TROLLEY_FRICTION;
+            this.trolleyX += this.trolleyVelocity;
+            
+            if (Math.abs(this.trolleyVelocity) < 0.01) {
+                this.trolleyVelocity = 0;
+                this.isTrolleyMoving = false;
+            }
+        }
+        
+        // 計算天車加速度
+        this.trolleyAcceleration = this.trolleyVelocity - this.previousTrolleyVelocity;
+        
+        // 更新天車視覺位置
+        this.trolley.x = this.trolleyX;
+    }
+    
+    updateRopePhysics() {
+        if (this.gameState === 'dropping') {
+            // 繩索釋放
+            if (this.ropeLength < this.ropeTargetLength) {
+                this.ropeLength += PHYSICS_CONSTANTS.ROPE_RELEASE_SPEED;
+                
+                // 檢查是否到達地面
+                const clawBottomY = this.clawContainer.y + 65;
+                if (clawBottomY >= this.floorY) {
+                    this.ropeLength = this.ropeTargetLength;
+                    this.startGrabbing();
+                }
+            }
+        } else if (this.gameState === 'lifting') {
+            // 繩索回收
+            if (this.ropeLength > PHYSICS_CONSTANTS.ROPE_MIN_LENGTH) {
+                // 計算有效回收速度（考慮獎品重量）
+                let effectiveLiftSpeed = PHYSICS_CONSTANTS.ROPE_RETRACT_SPEED;
+                
+                if (this.caughtPrizeId && this.caughtPrize) {
+                    effectiveLiftSpeed *= (1 / (1 + this.caughtPrize.weight * PHYSICS_CONSTANTS.WEIGHT_INFLUENCE));
+                }
+                
+                this.ropeLength -= effectiveLiftSpeed;
+                
+                if (this.ropeLength <= PHYSICS_CONSTANTS.ROPE_MIN_LENGTH) {
+                    this.ropeLength = PHYSICS_CONSTANTS.ROPE_MIN_LENGTH;
+                    this.completeLifting();
+                }
+            }
+        }
     }
     
     updateClawPhysics() {
-        // 鐘擺物理：爪子以天車為支點擺動
-        
-        // 計算繩索頂端（天車）和底端（爪子）的水平距離
-        const horizontalOffset = this.clawContainer.x - this.trolley.x;
-        
-        // 計算當前角度
-        this.clawAngle = Math.atan2(horizontalOffset, this.ropeLength);
-        
-        // 重力切向分量（產生擺動加速度）
-        const gravityTangential = PHYSICS_CONSTANTS.GRAVITY * Math.sin(this.clawAngle);
-        
-        // 更新角速度
-        this.clawAngularVel += gravityTangential;
-        
-        // 阻尼
-        this.clawAngularVel *= PHYSICS_CONSTANTS.PENDULUM_DAMPING;
-        this.clawAngularVel *= PHYSICS_CONSTANTS.AIR_RESISTANCE;
-        
-        // 限制最大角度
-        const maxAngle = Phaser.Math.DegToRad(PHYSICS_CONSTANTS.SLANT_LIMIT);
-        if (this.clawAngle > maxAngle) {
-            this.clawAngle = maxAngle;
-            this.clawAngularVel *= -0.3;
-        } else if (this.clawAngle < -maxAngle) {
-            this.clawAngle = -maxAngle;
-            this.clawAngularVel *= -0.3;
+        if (this.gameState === 'idle' || this.gameState === 'dropping') {
+            // 天車加速度傳遞（甩爪的來源）
+            this.clawAngularVel -= this.trolleyAcceleration * 0.15;
+            
+            // 重力切向分量（鐘擺運動）
+            const gravityTangential = PHYSICS_CONSTANTS.CLAW_GRAVITY * Math.sin(this.clawAngle);
+            this.clawAngularVel += gravityTangential;
+            
+            // 阻尼
+            this.clawAngularVel *= PHYSICS_CONSTANTS.PENDULUM_DAMPING;
+            this.clawAngularVel *= PHYSICS_CONSTANTS.AIR_RESISTANCE;
+            
+            // 更新角度
+            this.clawAngle += this.clawAngularVel;
+            
+            // 角度限制和邊界反彈
+            const maxAngle = Phaser.Math.DegToRad(PHYSICS_CONSTANTS.SLANT_LIMIT);
+            if (this.clawAngle > maxAngle) {
+                this.clawAngle = maxAngle;
+                this.clawAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_BOUNCE;
+            } else if (this.clawAngle < -maxAngle) {
+                this.clawAngle = -maxAngle;
+                this.clawAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_BOUNCE;
+            }
+            
+            // 下落時的重力影響
+            if (this.gameState === 'dropping') {
+                this.clawVelocityY += PHYSICS_CONSTANTS.CLAW_GRAVITY * 0.5;
+            }
         }
     }
     
     updateClawPosition() {
-        // 爪子位置由天車位置和繩索長度決定
+        // 爪子位置由天車位置、繩索長度和擺動角度決定
         const targetX = this.trolley.x + Math.sin(this.clawAngle) * this.ropeLength;
-        const targetY = this.trolley.y + Math.cos(this.clawAngle) * this.ropeLength;
+        const targetY = this.trolley.y + 15 + Math.cos(this.clawAngle) * this.ropeLength;
         
         // 平滑過渡
-        this.clawContainer.x += (targetX - this.clawContainer.x) * 0.8;
-        this.clawContainer.y += (targetY - this.clawContainer.y) * 0.8;
+        const lerpFactor = this.gameState === 'dropping' ? 0.6 : 0.8;
+        this.clawContainer.x += (targetX - this.clawContainer.x) * lerpFactor;
+        this.clawContainer.y += (targetY - this.clawContainer.y) * lerpFactor;
         
         // 更新爪子角度（視覺）
         this.clawContainer.angle = Phaser.Math.RadToDeg(this.clawAngle);
     }
     
-    checkGrab() {
+    startGrabbing() {
         this.gameState = 'grabbing';
         this.grabbingStartFrame = this.frameCount;
-        this.statusText.setText('抓取中...');
         this.isClawClosing = true;
-        
-        // 檢查是否碰到獎品
+        this.grabCheckDone = false;
+        this.statusText.setText('抓取中...');
+    }
+    
+    updateGrabCheck() {
+        if (this.gameState === 'grabbing' && !this.grabCheckDone) {
+            // 爪子閉合動畫
+            if (this.clawOpenAmount > 0.2) {
+                this.clawOpenAmount -= PHYSICS_CONSTANTS.CLAW_CLOSE_SPEED;
+                this.drawClawLeft();
+                this.drawClawRight();
+            }
+            
+            // 等待足夠幀數後判定
+            if (this.frameCount - this.grabbingStartFrame >= PHYSICS_CONSTANTS.GRAB_WAIT_FRAMES) {
+                this.grabCheckDone = true;
+                this.checkGrab();
+            }
+        }
+    }
+    
+    checkGrab() {
         const clawTipX = this.clawContainer.x;
         const clawTipY = this.clawContainer.y + 65;
         
         let caughtPrize = null;
-        let minDistance = 40;
+        let minDistance = 40 * (1 - this.clawOpenAmount * 0.5);
         
         this.prizes.forEach(prize => {
             if (prize.isCaught || prize.collected) return;
@@ -490,7 +606,7 @@ class GameScene extends Phaser.Scene {
         
         if (caughtPrize) {
             // 重量影響抓取成功率
-            const weightFactor = 1 - (caughtPrize.weight - 0.5) * 0.3;
+            const weightFactor = 1 - (caughtPrize.weight - 0.5) * PHYSICS_CONSTANTS.WEIGHT_INFLUENCE;
             const slipChance = PHYSICS_CONSTANTS.SLIP_FACTOR * (caughtPrize.weight / 2);
             
             if (Math.random() < slipChance || weightFactor < 0.3) {
@@ -502,21 +618,24 @@ class GameScene extends Phaser.Scene {
             this.caughtPrizeId = caughtPrize.id;
             this.caughtPrize = caughtPrize;
             caughtPrize.isCaught = true;
-            this.startLifting();
+            this.statusText.setText('抓到獎品！');
         } else {
-            this.startLifting();
+            this.statusText.setText('沒抓到...');
         }
+        
+        this.startLifting();
     }
     
     startLifting() {
         this.gameState = 'lifting';
-        this.statusText.setText(this.caughtPrizeId ? '抓到獎品！' : '上升中...');
         this.ropeTargetLength = PHYSICS_CONSTANTS.ROPE_MIN_LENGTH;
         
-        // 爪子閉合
+        // 爪子閉合程度
+        const targetOpenAmount = this.caughtPrizeId ? 0.2 : 0.5;
+        
         this.tweens.add({
             targets: this,
-            clawOpenAmount: this.caughtPrizeId ? 0.2 : 0.5,
+            clawOpenAmount: targetOpenAmount,
             duration: 300,
             ease: 'Power2',
             onUpdate: () => {
@@ -527,8 +646,8 @@ class GameScene extends Phaser.Scene {
     }
     
     completeLifting() {
-        if (this.caughtPrizeId) {
-            // 檢查是否在洞口上方
+        if (this.caughtPrizeId && this.caughtPrize) {
+            // 檢查爪子是否在洞口上方
             const clawXPercent = (this.clawContainer.x / 540) * 100;
             
             if (clawXPercent <= PHYSICS_CONSTANTS.HOLE_WIDTH_PERCENT) {
@@ -536,7 +655,7 @@ class GameScene extends Phaser.Scene {
                 this.scoreText.setText(`分數: ${this.score}`);
                 this.statusText.setText('成功獲得獎品！');
                 
-                if (this.caughtPrize) {
+                if (this.caughtPrize.container && this.caughtPrize.container.active) {
                     this.caughtPrize.container.destroy();
                     this.caughtPrize.collected = true;
                 }
@@ -555,11 +674,17 @@ class GameScene extends Phaser.Scene {
         if (this.caughtPrize && this.caughtPrize.container && this.caughtPrize.container.active) {
             this.caughtPrize.isCaught = false;
             
-            // 釋放慣性
-            const weightFactor = 1 / this.caughtPrize.weight;
+            // 釋放慣性（考慮擺動速度）
+            const releaseVelocityX = this.clawAngularVel * PHYSICS_CONSTANTS.RELEASE_IMPULSE;
+            const releaseVelocityY = 200;
+            
             this.caughtPrize.container.body.setVelocity(
-                this.clawAngularVel * 100 * weightFactor,
-                200
+                releaseVelocityX,
+                releaseVelocityY
+            );
+            
+            this.caughtPrize.container.body.setAngularVelocity(
+                this.clawAngularVel * 2
             );
         }
         this.caughtPrize = null;
@@ -570,13 +695,22 @@ class GameScene extends Phaser.Scene {
         this.gameState = 'idle';
         this.caughtPrizeId = null;
         this.caughtPrize = null;
-        this.clawAngularVel = 0;
-        this.clawOpenAmount = 1;
+        this.clawVelocityY = 0;
         
+        // 平滑重置爪子角度
+        this.tweens.add({
+            targets: this,
+            clawAngularVel: 0,
+            duration: 500,
+            ease: 'Power2'
+        });
+        
+        // 平滑重置爪子張開
         this.tweens.add({
             targets: this,
             clawOpenAmount: 1,
-            duration: 300,
+            duration: 500,
+            ease: 'Power2',
             onUpdate: () => {
                 this.drawClawLeft();
                 this.drawClawRight();
@@ -588,13 +722,21 @@ class GameScene extends Phaser.Scene {
         if (this.caughtPrizeId && this.caughtPrize && 
             this.caughtPrize.container && this.caughtPrize.container.active) {
             
-            const rad = Phaser.Math.DegToRad(this.clawContainer.angle);
-            const cosR = Math.cos(rad);
-            const sinR = Math.sin(rad);
-            
+            // 獎品跟隨爪子
             this.caughtPrize.container.x = this.clawContainer.x;
             this.caughtPrize.container.y = this.clawContainer.y + 65;
             this.caughtPrize.container.angle = this.clawContainer.angle;
+            
+            // 檢查獎品是否掉落（上升時擺動過大）
+            if (this.gameState === 'lifting') {
+                const swingSpeed = Math.abs(this.clawAngularVel);
+                const maxSwingSpeed = 0.5 / (this.caughtPrize.weight * 0.5);
+                
+                if (swingSpeed > maxSwingSpeed) {
+                    this.statusText.setText('獎品甩掉了！');
+                    this.releasePrize();
+                }
+            }
         }
     }
     
