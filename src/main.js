@@ -143,8 +143,8 @@ class GameScene extends Phaser.Scene {
         this.createBackground();
         this.createPrizes();
         this.createTrolley();
-        this.createRope();
         this.createClaw();
+        this.createRope();
         this.createUI();
         this.setupInput();
         this.setupColliders();
@@ -273,7 +273,6 @@ class GameScene extends Phaser.Scene {
     
     createRope() {
         this.ropeGraphics = this.add.graphics();
-        this.updateRopeVisual();
     }
     
     createClaw() {
