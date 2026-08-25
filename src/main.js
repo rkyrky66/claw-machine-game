@@ -1,29 +1,104 @@
-// ==================== 物理常數 ====================
+// ==================== // ==================== 物理常數（改進版） ====================
 const PHYSICS_CONSTANTS = {
     ROPE_MAX_Y: 80,
-    DROP_SPEED: 3,
-    LIFT_SPEED: 4,
-    SLANT_LIMIT: 45,
-    DROP_LIMIT: -45,
-    GRAVITY_RECOVERY: 0.15,
-    MOMENTUM_TRANSFER_RATE: 0.03,
+    DROP_SPEED: 2.5,
+    LIFT_SPEED: 3.5,
+    SLANT_LIMIT: 35,
+    DROP_LIMIT: -35,
+    GRAVITY_RECOVERY: 0.08,
+    MOMENTUM_TRANSFER_RATE: 0.05,
     HOLE_WIDTH_PERCENT: 15,
-    BOUNDARY_FRICTION: 0.5,
-    GROUND_FRICTION: 0.7,
-    PRIZE_FRICTION: 0.92,
-    PRIZE_GRAVITY: 0.5,
-    GRAB_WAIT_FRAMES: 30
+    BOUNDARY_FRICTION: 0.3,
+    GROUND_FRICTION: 0.85,
+    PRIZE_FRICTION: 0.95,
+    PRIZE_GRAVITY: 0.3,
+    GRAB_WAIT_FRAMES: 45,
+    
+    // 新增：真實物理參數
+    PENDULUM_DAMPING: 0.98,      // 鐘擺阻尼
+    ROPE_STIFFNESS: 0.1,         // 繩索剛度
+    CLAW_GRIP_STRENGTH: 0.7,     // 爪子抓力
+    SLIP_FACTOR: 0.15,           // 滑脫機率
+    WEIGHT_INFLUENCE: 0.6,       // 重量影響係數
+    AIR_RESISTANCE: 0.99,        // 空氣阻力
+    IMPACT_BOUNCE: 0.2,          // 撞擊反彈
+    CLAW_OPEN_ANGLE: 25,         // 爪子張開角度
+    CLAW_CLOSE_SPEED: 0.15       // 爪子閉合速度
 };
 
-// ==================== 初始獎品數據 ====================
+// ==================== 初始獎品數據（改進版） ====================
 const INITIAL_PRIZES = [
-    { id: '101', name: 'Golden Gumball', category: 'Rare', weight: 1.8, x: 25, y: 80, isCaught: false, color: 0xCCB025, velX: 0, velY: 0, angle: 0, angularVel: 0 },
-    { id: '205', name: 'Mystic Gem', category: 'Jewel', weight: 1.2, x: 45, y: 82, isCaught: false, color: 0xCC4DCC, velX: 0, velY: 0, angle: 0, angularVel: 0 },
-    { id: '312', name: 'Neon Robot', category: 'Toy', weight: 0.9, x: 65, y: 78, isCaught: false, color: 0x6328FA, velX: 0, velY: 0, angle: 0, angularVel: 0 },
-    { id: '408', name: 'Cyber Kitty', category: 'Common', weight: 0.6, x: 85, y: 80, isCaught: false, color: 0x25CCB0, velX: 0, velY: 0, angle: 0, angularVel: 0 }
+    { 
+        id: '101', 
+        name: 'Golden Gumball', 
+        category: 'Rare', 
+        weight: 2.5, 
+        x: 25, 
+        y: 80, 
+        isCaught: false, 
+        color: 0xCCB025,
+        size: 20,
+        friction: 0.3,
+        bounciness: 0.4,
+        velX: 0, 
+        velY: 0, 
+        angle: 0, 
+        angularVel: 0 
+    },
+    { 
+        id: '205', 
+        name: 'Mystic Gem', 
+        category: 'Jewel', 
+        weight: 1.5, 
+        x: 45, 
+        y: 82, 
+        isCaught: false, 
+        color: 0xCC4DCC,
+        size: 18,
+        friction: 0.2,
+        bounciness: 0.3,
+        velX: 0, 
+        velY: 0, 
+        angle: 0, 
+        angularVel: 0 
+    },
+    { 
+        id: '312', 
+        name: 'Neon Robot', 
+        category: 'Toy', 
+        weight: 1.2, 
+        x: 65, 
+        y: 78, 
+        isCaught: false, 
+        color: 0x6328FA,
+        size: 22,
+        friction: 0.5,
+        bounciness: 0.2,
+        velX: 0, 
+        velY: 0, 
+        angle: 0, 
+        angularVel: 0 
+    },
+    { 
+        id: '408', 
+        name: 'Cyber Kitty', 
+        category: 'Common', 
+        weight: 0.8, 
+        x: 85, 
+        y: 80, 
+        isCaught: false, 
+        color: 0x25CCB0,
+        size: 16,
+        friction: 0.4,
+        bounciness: 0.5,
+        velX: 0, 
+        velY: 0, 
+        angle: 0, 
+        angularVel: 0 
+    }
 ];
 
-// ==================== 遊戲場景 ====================
+// ==================== 遊戲場景（改進版） ====================
 class GameScene extends Phaser.Scene {
     constructor() {
         super({ key: 'GameScene' });
@@ -37,6 +112,15 @@ class GameScene extends Phaser.Scene {
         this.storedImpulse = 0;
         this.lastDx = 0;
         
+        // 新增：擺動物裡
+        this.pendulumAngle = 0;
+        this.pendulumVel = 0;
+        this.ropeSegments = [];
+        
+        // 爪子動畫
+        this.clawOpenAmount = 1;  // 1 = 全開, 0 = 全閉
+        this.isClawClosing = false;
+        
         // 遊戲狀態
         this.gameState = 'idle';
         this.isDragging = false;
@@ -48,6 +132,7 @@ class GameScene extends Phaser.Scene {
         this.collisionSnapshot = null;
         this.grabbingStartFrame = 0;
         this.frameCount = 0;
+        this.gripStrength = 0;
         
         // 獎品
         this.prizes = [];
@@ -119,27 +204,37 @@ class GameScene extends Phaser.Scene {
             // 獎品容器
             const container = this.add.container(x, y);
             
-            // 獎品本體
-            const prizeBody = this.add.circle(0, 0, 22, prizeData.color);
-            prizeBody.setStrokeStyle(3, 0xffffff, 0.5);
+            // 獎品本體（使用不同形狀）
+            let prizeBody;
+            if (prizeData.category === 'Jewel') {
+                prizeBody = this.add.polygon(0, 0, this.createJewelPoints(prizeData.size), prizeData.color);
+            } else if (prizeData.category === 'Toy') {
+                prizeBody = this.add.rectangle(0, 0, prizeData.size * 2, prizeData.size * 2.5, prizeData.color);
+            } else {
+                prizeBody = this.add.circle(0, 0, prizeData.size, prizeData.color);
+            }
+            prizeBody.setStrokeStyle(2, 0xffffff, 0.3);
             
             // 獎品文字
             const prizeText = this.add.text(0, 0, prizeData.name.split(' ')[0], {
-                font: 'bold 12px Arial',
+                font: 'bold 10px Arial',
                 fill: '#ffffff'
             }).setOrigin(0.5);
             
             container.add([prizeBody, prizeText]);
-            container.setSize(44, 44);
+            container.setSize(prizeData.size * 2, prizeData.size * 2);
             container.setData('id', prizeData.id);
             container.setData('weight', prizeData.weight);
+            container.setData('friction', prizeData.friction);
+            container.setData('bounciness', prizeData.bounciness);
             
             // 物理body
             this.physics.add.existing(container);
             container.body.setCollideWorldBounds(true);
-            container.body.setBounce(0.3);
+            container.body.setBounce(prizeData.bounciness);
             container.body.setDamping(true);
-            container.body.setDrag(0.01);
+            container.body.setDrag(prizeData.friction);
+            container.body.setMass(prizeData.weight);
             
             this.prizes.push({
                 ...prizeData,
@@ -151,35 +246,50 @@ class GameScene extends Phaser.Scene {
         });
     }
     
+    createJewelPoints(size) {
+        const points = [];
+        for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI * 2;
+            const radius = i % 2 === 0 ? size : size * 0.5;
+            points.push({
+                x: Math.cos(angle) * radius,
+                y: Math.sin(angle) * radius
+            });
+        }
+        return points;
+    }
+    
     createClaw() {
         this.clawContainer = this.add.container(
             (this.clawX / 100) * 540,
             960 - (this.clawY / 100) * 960
         );
         
-        // 繩索
-        this.rope = this.add.rectangle(0, -150, 3, 300, 0xcccccc);
+        // 繩索（使用多段來模擬弧度）
+        this.ropeSegments = [];
+        for (let i = 0; i < 10; i++) {
+            const segment = this.add.rectangle(0, -i * 30, 3, 30, 0xcccccc);
+            segment.setAlpha(1 - i * 0.05);
+            this.ropeSegments.push(segment);
+            this.clawContainer.add(segment);
+        }
         
         // 爪子本體
         this.clawBody = this.add.graphics();
-        this.clawBody.fillStyle(0x888888, 1);
-        this.clawBody.fillRoundedRect(-25, 0, 50, 70, 15);
+        this.drawClawBody();
         
-        // 左爪
+        // 左爪（可動）
         this.clawLeft = this.add.graphics();
-        this.clawLeft.fillStyle(0x666666, 1);
-        this.clawLeft.fillRoundedRect(-30, 50, 20, 50, 8);
+        this.drawClawLeft();
         
-        // 右爪
+        // 右爪（可動）
         this.clawRight = this.add.graphics();
-        this.clawRight.fillStyle(0x666666, 1);
-        this.clawRight.fillRoundedRect(10, 50, 20, 50, 8);
+        this.drawClawRight();
         
         // 中心碰撞點
         this.centerHit = this.add.circle(0, 70, 5, 0xff0000, 0);
         
         this.clawContainer.add([
-            this.rope,
             this.clawBody,
             this.clawLeft,
             this.clawRight,
@@ -190,6 +300,48 @@ class GameScene extends Phaser.Scene {
         this.physics.add.existing(this.clawContainer);
         this.clawContainer.body.setSize(50, 120);
         this.clawContainer.body.setOffset(-25, 0);
+    }
+    
+    drawClawBody() {
+        this.clawBody.clear();
+        this.clawBody.fillStyle(0x888888, 1);
+        this.clawBody.fillRoundedRect(-25, 0, 50, 70, 15);
+        this.clawBody.fillStyle(0x999999, 1);
+        this.clawBody.fillRoundedRect(-20, 10, 40, 50, 10);
+    }
+    
+    drawClawLeft() {
+        this.clawLeft.clear();
+        const openAngle = this.clawOpenAmount * PHYSICS_CONSTANTS.CLAW_OPEN_ANGLE;
+        const rad = Phaser.Math.DegToRad(openAngle);
+        
+        this.clawLeft.fillStyle(0x666666, 1);
+        this.clawLeft.fillRoundedRect(-30, 50, 20, 50, 8);
+        
+        // 爪子尖端（根據開合角度旋轉）
+        this.clawLeft.fillStyle(0x555555, 1);
+        this.clawLeft.save();
+        this.clawLeft.translateCanvas(-20, 90);
+        this.clawLeft.rotateCanvas(rad);
+        this.clawLeft.fillRoundedRect(-10, 0, 20, 30, 5);
+        this.clawLeft.restore();
+    }
+    
+    drawClawRight() {
+        this.clawRight.clear();
+        const openAngle = this.clawOpenAmount * PHYSICS_CONSTANTS.CLAW_OPEN_ANGLE;
+        const rad = -Phaser.Math.DegToRad(openAngle);
+        
+        this.clawRight.fillStyle(0x666666, 1);
+        this.clawRight.fillRoundedRect(10, 50, 20, 50, 8);
+        
+        // 爪子尖端
+        this.clawRight.fillStyle(0x555555, 1);
+        this.clawRight.save();
+        this.clawRight.translateCanvas(20, 90);
+        this.clawRight.rotateCanvas(rad);
+        this.clawRight.fillRoundedRect(-10, 0, 20, 30, 5);
+        this.clawRight.restore();
     }
     
     createUI() {
@@ -210,20 +362,14 @@ class GameScene extends Phaser.Scene {
     }
     
     createMomentumBar() {
-        // 動量條背景
         const barBg = this.add.rectangle(270, 180, 200, 20, 0x333333);
         barBg.setStrokeStyle(1, 0x666666);
         
-        // 動量條填充（左）
         this.momentumLeft = this.add.rectangle(170, 180, 0, 16, 0x22c55e);
-        
-        // 動量條填充（右）
         this.momentumRight = this.add.rectangle(370, 180, 0, 16, 0xef4444);
         
-        // 中心線
         this.add.rectangle(270, 180, 2, 20, 0xffffff);
         
-        // 標籤
         this.add.text(270, 210, '動量', {
             font: '14px Arial',
             fill: '#ffffff'
@@ -255,12 +401,12 @@ class GameScene extends Phaser.Scene {
     }
     
     setupColliders() {
-        // 地面碰撞
         const ground = this.add.rectangle(270, this.floorY, 540, 10, 0x00f3ff);
         this.physics.add.existing(ground, true);
         
         // 獎品之間的碰撞
-        this.physics.add.collider(this.prizes.map(p => p.container), this.prizes.map(p => p.container));
+        const prizeBodies = this.prizes.map(p => p.container);
+        this.physics.add.collider(prizeBodies, prizeBodies);
         
         // 獎品與地面碰撞
         this.prizes.forEach(prize => {
@@ -280,6 +426,7 @@ class GameScene extends Phaser.Scene {
             this.storedImpulse += dx * PHYSICS_CONSTANTS.MOMENTUM_TRANSFER_RATE;
         } else {
             this.manualAngularVel += dx * 0.5;
+            this.pendulumVel += dx * 0.3;
         }
         
         this.clawX = clX;
@@ -289,30 +436,34 @@ class GameScene extends Phaser.Scene {
     dropClaw() {
         this.gameState = 'dropping';
         this.statusText.setText('下落中...');
+        this.isClawClosing = false;
+        this.clawOpenAmount = 1;
         
         this.tweens.add({
             targets: this.clawContainer,
             y: this.floorY - 50,
-            duration: 500,
+            duration: 600,
             ease: 'Power2',
             onComplete: () => {
                 this.gameState = 'grabbing';
                 this.grabbingStartFrame = this.frameCount;
                 this.statusText.setText('抓取中...');
+                this.isClawClosing = true;
+                this.gripStrength = PHYSICS_CONSTANTS.CLAW_GRIP_STRENGTH;
                 this.checkGrab();
             }
         });
     }
     
     checkGrab() {
-        // 檢查爪子是否碰到獎品
         const clawWorldX = this.clawContainer.x;
         const clawWorldY = this.clawContainer.y + 70;
         
         let caughtPrize = null;
+        let minDistance = 40;
         
         this.prizes.forEach(prize => {
-            if (prize.isCaught) return;
+            if (prize.isCaught || prize.collected) return;
             
             const distance = Phaser.Math.Distance.Between(
                 clawWorldX,
@@ -321,23 +472,35 @@ class GameScene extends Phaser.Scene {
                 prize.container.y
             );
             
-            if (distance < 40) {
+            if (distance < minDistance) {
+                minDistance = distance;
                 caughtPrize = prize;
             }
         });
         
         if (caughtPrize) {
-            // 成功抓取
+            // 計算抓取成功率（考慮重量和距離）
+            const weightFactor = 1 - (caughtPrize.weight - 0.5) * PHYSICS_CONSTANTS.WEIGHT_INFLUENCE;
+            const distanceFactor = 1 - (minDistance / 40) * 0.5;
+            const gripFactor = weightFactor * distanceFactor;
+            
+            // 隨機滑脫
+            const slipChance = PHYSICS_CONSTANTS.SLIP_FACTOR * (caughtPrize.weight / 2);
+            
+            if (Math.random() < slipChance || gripFactor < 0.3) {
+                // 滑脫
+                caughtPrize = null;
+            }
+        }
+        
+        if (caughtPrize) {
             this.caughtPrizeId = caughtPrize.id;
             caughtPrize.isCaught = true;
-            
-            // 計算偏移
             caughtPrize.grabOffsetX = (caughtPrize.container.x - clawWorldX) / 5.4;
             caughtPrize.grabOffsetY = (clawWorldY - caughtPrize.container.y) / 9.6;
             
             this.liftClaw(true);
         } else {
-            // 沒抓到
             this.liftClaw(false);
         }
     }
@@ -346,20 +509,31 @@ class GameScene extends Phaser.Scene {
         this.gameState = 'lifting';
         this.statusText.setText(hasPrize ? '抓到獎品！' : '上升中...');
         
+        // 爪子閉合
+        this.tweens.add({
+            targets: this,
+            clawOpenAmount: hasPrize ? 0.2 : 0.5,
+            duration: 300,
+            ease: 'Power2'
+        });
+        
+        // 上升速度受重量影響
+        const liftDuration = hasPrize && this.caughtPrizeId ? 
+            800 + this.getCaughtPrizeWeight() * 200 : 
+            800;
+        
         this.tweens.add({
             targets: this.clawContainer,
             y: 0,
-            duration: 800,
+            duration: liftDuration,
             ease: 'Power2',
             onComplete: () => {
                 if (hasPrize && this.caughtPrizeId) {
-                    // 檢查是否在洞口上方
                     if (this.clawX <= PHYSICS_CONSTANTS.HOLE_WIDTH_PERCENT) {
                         this.score += 100;
                         this.scoreText.setText(`分數: ${this.score}`);
                         this.statusText.setText('成功獲得獎品！');
                         
-                        // 移除獎品
                         const caughtPrize = this.prizes.find(p => p.id === this.caughtPrizeId);
                         if (caughtPrize) {
                             caughtPrize.container.destroy();
@@ -379,18 +553,24 @@ class GameScene extends Phaser.Scene {
         });
     }
     
+    getCaughtPrizeWeight() {
+        const caughtPrize = this.prizes.find(p => p.id === this.caughtPrizeId);
+        return caughtPrize ? caughtPrize.weight : 0;
+    }
+    
     releasePrize() {
         const caughtPrize = this.prizes.find(p => p.id === this.caughtPrizeId);
         if (caughtPrize && caughtPrize.container && caughtPrize.container.active) {
             caughtPrize.isCaught = false;
             
-            // 釋放慣性
+            // 釋放慣性（考慮重量）
+            const weightFactor = 1 / caughtPrize.weight;
             caughtPrize.container.body.setVelocity(
-                this.manualAngularVel * -45,
-                0
+                this.manualAngularVel * -45 * weightFactor,
+                200
             );
             caughtPrize.container.body.setAngularVelocity(
-                this.manualAngularVel * 2
+                this.manualAngularVel * 2 * weightFactor
             );
         }
         this.caughtPrizeId = null;
@@ -402,15 +582,22 @@ class GameScene extends Phaser.Scene {
         this.manualAngularVel = 0;
         this.storedImpulse = 0;
         this.lastDx = 0;
-        this.manualAngle = 0;
+        this.pendulumVel = 0;
         
         this.tweens.add({
             targets: this.clawContainer,
             x: 270,
             y: 0,
             angle: 0,
-            duration: 300,
-            ease: 'Power2'
+            duration: 500,
+            ease: 'Power2',
+            onComplete: () => {
+                this.manualAngle = 0;
+                this.pendulumAngle = 0;
+                this.clawOpenAmount = 1;
+                this.drawClawLeft();
+                this.drawClawRight();
+            }
         });
     }
     
@@ -435,20 +622,35 @@ class GameScene extends Phaser.Scene {
         }
     }
     
+    updateRopePhysics() {
+        // 繩索弧度模擬
+        const baseAngle = Phaser.Math.DegToRad(this.manualAngle);
+        
+        this.ropeSegments.forEach((segment, index) => {
+            const segmentAngle = baseAngle + Math.sin(this.frameCount * 0.1 + index * 0.5) * 0.05;
+            segment.rotation = segmentAngle;
+            segment.x = Math.sin(segmentAngle) * index * 5;
+        });
+    }
+    
     update(time, delta) {
         this.frameCount++;
         
-        // 物理更新
         if (this.gameState !== 'grabbing') {
-            // 重力恢復
+            // 重力恢復（鐘擺運動）
             if (Math.abs(this.lastDx) > 0.01) {
                 this.manualAngularVel -= this.lastDx * 0.8;
                 this.lastDx *= 0.5;
             }
             
+            // 鐘擺物理
             const gravityForce = Math.sin(this.manualAngle * (Math.PI / 180)) * 
                                 PHYSICS_CONSTANTS.GRAVITY_RECOVERY;
             this.manualAngularVel += gravityForce;
+            this.manualAngularVel *= PHYSICS_CONSTANTS.PENDULUM_DAMPING;
+            
+            // 空氣阻力
+            this.manualAngularVel *= PHYSICS_CONSTANTS.AIR_RESISTANCE;
             this.storedImpulse *= 0.95;
             
             let newAngle = this.manualAngle + this.manualAngularVel;
@@ -457,11 +659,14 @@ class GameScene extends Phaser.Scene {
                 if (newAngle >= PHYSICS_CONSTANTS.SLANT_LIMIT) {
                     newAngle = PHYSICS_CONSTANTS.SLANT_LIMIT;
                     this.isSticking = 'left';
-                    this.manualAngularVel *= PHYSICS_CONSTANTS.BOUNDARY_FRICTION;
+                    // 邊界反彈
+                    this.manualAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_FRICTION;
+                    this.manualAngularVel *= 0.5;
                 } else if (newAngle <= PHYSICS_CONSTANTS.DROP_LIMIT) {
                     newAngle = PHYSICS_CONSTANTS.DROP_LIMIT;
                     this.isSticking = 'right';
-                    this.manualAngularVel *= PHYSICS_CONSTANTS.BOUNDARY_FRICTION;
+                    this.manualAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_FRICTION;
+                    this.manualAngularVel *= 0.5;
                 } else {
                     this.isSticking = null;
                 }
@@ -469,6 +674,16 @@ class GameScene extends Phaser.Scene {
             
             this.manualAngle = newAngle;
             this.clawContainer.angle = this.manualAngle;
+            
+            // 更新繩索
+            this.updateRopePhysics();
+        }
+        
+        // 爪子開合動畫
+        if (this.isClawClosing && this.clawOpenAmount > 0.2) {
+            this.clawOpenAmount -= PHYSICS_CONSTANTS.CLAW_CLOSE_SPEED;
+            this.drawClawLeft();
+            this.drawClawRight();
         }
         
         // 更新被抓取的獎品位置
@@ -493,7 +708,7 @@ class GameScene extends Phaser.Scene {
     }
 }
 
-// ==================== 遊戲配置 ====================
+// ==================== 遊戲配置（保持不變） ====================
 const config = {
     type: Phaser.AUTO,
     parent: 'game-container',
@@ -526,11 +741,10 @@ const config = {
     }
 };
 
-// ==================== 初始化遊戲 ====================
+// ==================== 初始化遊戲（保持不變） ====================
 const game = new Phaser.Game(config);
 window.game = game;
 
-// 隱藏載入畫面
 game.events.on('ready', () => {
     setTimeout(() => {
         const loadingScreen = document.getElementById('loading-screen');
@@ -543,7 +757,7 @@ game.events.on('ready', () => {
     }, 500);
 });
 
-// ==================== 訊息對接（預留） ====================
+// ==================== 訊息對接（保持不變） ====================
 class GameMessageHandler {
     constructor() {
         this.settings = {};
