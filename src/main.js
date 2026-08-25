@@ -644,46 +644,56 @@ class GameScene extends Phaser.Scene {
     }
     
     updateTrolleyPhysics() {
-        this.previousTrolleyVelocity = this.trolleyVelocity;
+    this.previousTrolleyVelocity = this.trolleyVelocity;
+    
+    if (this.isDragging) {
+        const dx = this.trolleyTargetX - this.trolleyX;
+        const targetVelocity = dx * 0.15;
         
-        if (this.isDragging) {
-            const dx = this.trolleyTargetX - this.trolleyX;
-            const targetVelocity = dx * 0.15;
-            
-            this.trolleyVelocity = Phaser.Math.Clamp(
-                targetVelocity,
-                -PHYSICS_CONSTANTS.TROLLEY_MAX_SPEED,
-                PHYSICS_CONSTANTS.TROLLEY_MAX_SPEED
-            );
-            
-            this.trolleyX += this.trolleyVelocity;
-            this.isTrolleyMoving = Math.abs(this.trolleyVelocity) > 0.1;
-        } else {
-            this.trolleyVelocity *= PHYSICS_CONSTANTS.TROLLEY_FRICTION;
-            this.trolleyX += this.trolleyVelocity;
-            
-            if (Math.abs(this.trolleyVelocity) < 0.01) {
-                this.trolleyVelocity = 0;
-                this.isTrolleyMoving = false;
-            }
+        this.trolleyVelocity = Phaser.Math.Clamp(
+            targetVelocity,
+            -PHYSICS_CONSTANTS.TROLLEY_MAX_SPEED,
+            PHYSICS_CONSTANTS.TROLLEY_MAX_SPEED
+        );
+        
+        this.trolleyX += this.trolleyVelocity;
+        
+        // ✅ 加入邊界限制
+        this.trolleyX = Phaser.Math.Clamp(this.trolleyX, 30, 510);
+        
+        this.isTrolleyMoving = Math.abs(this.trolleyVelocity) > 0.1;
+    } else {
+        this.trolleyVelocity *= PHYSICS_CONSTANTS.TROLLEY_FRICTION;
+        this.trolleyX += this.trolleyVelocity;
+        
+        // ✅ 加入邊界限制
+        this.trolleyX = Phaser.Math.Clamp(this.trolleyX, 30, 510);
+        
+        if (Math.abs(this.trolleyVelocity) < 0.01) {
+            this.trolleyVelocity = 0;
+            this.isTrolleyMoving = false;
         }
-        
-        this.trolleyAcceleration = this.trolleyVelocity - this.previousTrolleyVelocity;
-        this.trolley.x = this.trolleyX;
     }
     
+    this.trolleyAcceleration = this.trolleyVelocity - this.previousTrolleyVelocity;
+    this.trolley.x = this.trolleyX;
+}
+    
     updateRopePhysics() {
-        if (this.gameState === 'dropping') {
-            if (this.ropeLength < this.ropeTargetLength) {
-                this.ropeLength += PHYSICS_CONSTANTS.ROPE_RELEASE_SPEED;
-                
-                const clawBottomY = this.clawContainer.y + 65;
-                if (clawBottomY >= this.floorY) {
-                    this.ropeLength = this.ropeTargetLength;
-                    this.startGrabbing();
-                }
+    if (this.gameState === 'dropping') {
+        if (this.ropeLength < this.ropeTargetLength) {
+            this.ropeLength += PHYSICS_CONSTANTS.ROPE_RELEASE_SPEED;
+            
+            // ✅ 檢查繩索是否到達最大長度
+            if (this.ropeLength >= this.ropeTargetLength) {
+                this.ropeLength = this.ropeTargetLength;
+                this.startGrabbing();
             }
-        } else if (this.gameState === 'lifting') {
+        } else {
+            // ✅ 如果已經到達最大長度，直接觸發抓取
+            this.startGrabbing();
+        }
+    } else if (this.gameState === 'lifting') {
             if (this.ropeLength > PHYSICS_CONSTANTS.ROPE_MIN_LENGTH) {
                 let effectiveLiftSpeed = PHYSICS_CONSTANTS.ROPE_RETRACT_SPEED;
                 
@@ -728,16 +738,20 @@ class GameScene extends Phaser.Scene {
         }
     }
     
-    updateClawPosition() {
-        const targetX = this.trolley.x + Math.sin(this.clawAngle) * this.ropeLength;
-        const targetY = this.trolley.y + 15 + Math.cos(this.clawAngle) * this.ropeLength;
-        
-        const lerpFactor = this.gameState === 'dropping' ? 0.6 : 0.8;
-        this.clawContainer.x += (targetX - this.clawContainer.x) * lerpFactor;
-        this.clawContainer.y += (targetY - this.clawContainer.y) * lerpFactor;
-        
-        this.clawContainer.angle = Phaser.Math.RadToDeg(this.clawAngle);
-    }
+updateClawPosition() {
+    const targetX = this.trolley.x + Math.sin(this.clawAngle) * this.ropeLength;
+    const targetY = this.trolley.y + 15 + Math.cos(this.clawAngle) * this.ropeLength;
+    
+    // ✅ 限制爪子 X 在畫面內
+    const clampedX = Phaser.Math.Clamp(targetX, 0, 540);
+    const clampedY = Phaser.Math.Clamp(targetY, 0, this.floorY);
+    
+    const lerpFactor = this.gameState === 'dropping' ? 0.6 : 0.8;
+    this.clawContainer.x += (clampedX - this.clawContainer.x) * lerpFactor;
+    this.clawContainer.y += (clampedY - this.clawContainer.y) * lerpFactor;
+    
+    this.clawContainer.angle = Phaser.Math.RadToDeg(this.clawAngle);
+}
     
     startGrabbing() {
         this.gameState = 'grabbing';
