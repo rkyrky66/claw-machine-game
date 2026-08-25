@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#000000">
     <title>Neon Claw Machine</title>
     <style>
         * {
@@ -26,12 +27,13 @@
             -webkit-touch-callout: none;
             -webkit-user-select: none;
             user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
         
         #game-container {
             width: 100%;
             height: 100dvh;
-            max-width: 500px;
+            max-width: 540px;
             aspect-ratio: 9/16;
             position: relative;
             background: #000;
@@ -43,27 +45,41 @@
             height: 100% !important;
         }
         
-        /* 載入畫面 */
         #loading-screen {
-            position: absolute;
+            position: fixed;
             top: 0;
             left: 0;
             width: 100%;
-            height: 100%;
+            height: 100dvh;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             background: #000;
-            z-index: 10;
-            transition: opacity 0.5s;
+            z-index: 1000;
+            transition: opacity 0.5s ease;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid #333;
+            border-top: 3px solid #00f3ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
         }
         
         .loading-text {
             color: #00f3ff;
-            font-size: 24px;
+            font-size: 18px;
             font-weight: bold;
+            margin-top: 20px;
             animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
         
         @keyframes pulse {
@@ -75,14 +91,15 @@
 <body>
     <div id="game-container">
         <div id="loading-screen">
+            <div class="loading-spinner"></div>
             <div class="loading-text">載入中...</div>
         </div>
     </div>
     
-    <!-- Phaser CDN -->
+    <!-- Phaser 遊戲引擎 -->
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
     
-    <!-- 遊戲主程式  -->
+    <!-- 遊戲主程式 -->
     <script src="src/main.js"></script>
 </body>
 </html>
