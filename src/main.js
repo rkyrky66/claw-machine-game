@@ -1,20 +1,23 @@
 // ==================== 物理常數 ====================
 const PHYSICS_CONSTANTS = {
     // 控制系統
-    DEAD_ZONE_WIDTH: 15,         // 死區半徑（像素）
-    TROLLEY_SPEED: 6,            // 天車均速
+    DEAD_ZONE_WIDTH: 15,
+    TROLLEY_SPEED: 6,
     
     // 繩索參數
     ROPE_MAX_LENGTH: 700,
     ROPE_MIN_LENGTH: 100,
     ROPE_RELEASE_SPEED: 8,
     ROPE_RETRACT_SPEED: 6,
-    ROPE_STIFFNESS: 0.15,        // 繩索剛度（延遲係數）
+    ROPE_STIFFNESS: 0.15,
+    ROPE_THICKNESS: 3,
+    SPOOL_RADIUS: 12,
+    COIL_SPACING: 2.5,
     
-    // 爪子物理
+    // 爪子物理（單擺模型）
     CLAW_GRAVITY: 0.5,
-    PENDULUM_DAMPING: 0.97,
-    AIR_RESISTANCE: 0.99,
+    PENDULUM_DAMPING: 0.02,
+    AIR_RESISTANCE: 0.995,
     SLANT_LIMIT: 40,
     BOUNDARY_BOUNCE: 0.25,
     WALL_LEFT: 30,
@@ -63,20 +66,21 @@ class ValidationSystem {
             frame: this.scene.frameCount,
             gameState: this.scene.gameState,
             trolleyX: this.scene.trolleyX,
+            trolleyDirection: this.scene.trolleyDirection,
             ropeTopX: this.scene.ropeTopX,
             ropeTopY: this.scene.ropeTopY,
             ropeBottomX: this.scene.ropeBottomX,
             ropeBottomY: this.scene.ropeBottomY,
+            ropeLength: this.scene.ropeLength,
+            ropeOnSpool: this.scene.getRopeOnSpool(),
             clawX: this.scene.clawContainer.x,
             clawY: this.scene.clawContainer.y,
             clawAngle: Phaser.Math.RadToDeg(this.scene.clawAngle),
             clawAngularVel: this.scene.clawAngularVel,
-            ropeLength: this.scene.ropeLength,
             deadZoneCenter: this.scene.deadZoneCenter,
             deadZoneLeft: this.scene.deadZoneLeft,
             deadZoneRight: this.scene.deadZoneRight,
-            pointerX: this.scene.pointerX,
-            trolleyDirection: this.scene.trolleyDirection
+            pointerX: this.scene.pointerX
         });
     }
     
@@ -95,7 +99,7 @@ class GameScene extends Phaser.Scene {
         
         // 天車狀態
         this.trolleyX = 270;
-        this.trolleyDirection = 0;  // -1=左, 0=停, 1=右
+        this.trolleyDirection = 0;
         
         // 死區控制
         this.deadZoneCenter = 270;
@@ -104,11 +108,11 @@ class GameScene extends Phaser.Scene {
         this.pointerX = 270;
         this.isPointerDown = false;
         
-        // 繩索狀態（分離上下端）
-        this.ropeTopX = 270;        // 繩索上端（天車連接點）
-        this.ropeTopY = 65;         // 繩索上端Y
-        this.ropeBottomX = 270;     // 繩索下端（爪子連接點）
-        this.ropeBottomY = 165;     // 繩索下端Y
+        // 繩索狀態
+        this.ropeTopX = 270;
+        this.ropeTopY = 65;
+        this.ropeBottomX = 270;
+        this.ropeBottomY = 165;
         this.ropeLength = 100;
         this.ropeTargetLength = 100;
         
@@ -138,6 +142,7 @@ class GameScene extends Phaser.Scene {
         this.createBackground();
         this.createPrizes();
         this.createTrolley();
+        this.createRopeSpool();
         this.createRope();
         this.createClaw();
         this.createUI();
@@ -155,6 +160,10 @@ class GameScene extends Phaser.Scene {
         trackGraphics.lineStyle(4, 0x555555);
         trackGraphics.moveTo(10, 50);
         trackGraphics.lineTo(530, 50);
+        trackGraphics.strokePath();
+        trackGraphics.lineStyle(2, 0x333333);
+        trackGraphics.moveTo(10, 55);
+        trackGraphics.lineTo(530, 55);
         trackGraphics.strokePath();
         
         // 網格
@@ -175,10 +184,14 @@ class GameScene extends Phaser.Scene {
         const holeGraphics = this.add.graphics();
         holeGraphics.fillStyle(0xff00ff, 0.2);
         holeGraphics.fillRect(0, 816, this.holeWidth, 144);
+        holeGraphics.lineStyle(2, 0xff00ff, 0.5);
+        holeGraphics.strokeRect(0, 816, this.holeWidth, 144);
         
         // 地面
         this.floorY = 816;
-        this.add.rectangle(270, this.floorY, 540, 5, 0x00f3ff);
+        const groundGraphics = this.add.graphics();
+        groundGraphics.fillStyle(0x00f3ff, 1);
+        groundGraphics.fillRect(0, this.floorY, 540, 5);
         
         // GOAL文字
         this.add.text(this.holeWidth / 2, 880, 'GOAL', {
@@ -239,15 +252,58 @@ class GameScene extends Phaser.Scene {
         this.trolley = this.add.container(this.trolleyX, 50);
         
         const trolleyGraphics = this.add.graphics();
+        // 天車主體
         trolleyGraphics.fillStyle(0xff6600, 1);
         trolleyGraphics.fillRoundedRect(-25, -15, 50, 30, 5);
+        // 天車輪子
         trolleyGraphics.fillStyle(0x333333, 1);
         trolleyGraphics.fillCircle(-15, 10, 5);
         trolleyGraphics.fillCircle(15, 10, 5);
+        // 天車掛鉤
         trolleyGraphics.fillStyle(0xff8833, 1);
         trolleyGraphics.fillRect(-3, 15, 6, 10);
         
         this.trolley.add(trolleyGraphics);
+    }
+    
+    createRopeSpool() {
+        this.ropeSpoolGraphics = this.add.graphics();
+        this.updateSpoolVisual();
+    }
+    
+    getRopeOnSpool() {
+        // 繩索在捲軸上的長度
+        return Math.max(0, PHYSICS_CONSTANTS.ROPE_MAX_LENGTH - this.ropeLength);
+    }
+    
+    updateSpoolVisual() {
+        this.ropeSpoolGraphics.clear();
+        
+        const spoolX = this.ropeTopX;
+        const spoolY = this.ropeTopY;
+        const spoolRadius = PHYSICS_CONSTANTS.SPOOL_RADIUS;
+        
+        // 捲軸外殼
+        this.ropeSpoolGraphics.fillStyle(0x555555, 1);
+        this.ropeSpoolGraphics.fillCircle(spoolX, spoolY, spoolRadius);
+        
+        // 捲軸內圈
+        this.ropeSpoolGraphics.fillStyle(0x333333, 1);
+        this.ropeSpoolGraphics.fillCircle(spoolX, spoolY, spoolRadius * 0.6);
+        
+        // 繩索纏繞圈數
+        const ropeOnSpool = this.getRopeOnSpool();
+        const coils = Math.floor(ropeOnSpool / 50);
+        
+        this.ropeSpoolGraphics.lineStyle(2, 0xcccccc, 0.8);
+        for (let i = 0; i < coils && i < 8; i++) {
+            const coilRadius = spoolRadius * 0.7 + i * PHYSICS_CONSTANTS.COIL_SPACING;
+            this.ropeSpoolGraphics.strokeCircle(spoolX, spoolY, coilRadius);
+        }
+        
+        // 捲軸中心軸
+        this.ropeSpoolGraphics.fillStyle(0x888888, 1);
+        this.ropeSpoolGraphics.fillCircle(spoolX, spoolY, 3);
     }
     
     createRope() {
@@ -273,6 +329,8 @@ class GameScene extends Phaser.Scene {
         this.clawBody.clear();
         this.clawBody.fillStyle(0x888888, 1);
         this.clawBody.fillRoundedRect(-25, -35, 50, 70, 15);
+        this.clawBody.fillStyle(0x999999, 1);
+        this.clawBody.fillRoundedRect(-20, -25, 40, 50, 10);
     }
     
     drawClawLeft() {
@@ -314,7 +372,6 @@ class GameScene extends Phaser.Scene {
             fill: '#ffffff'
         }).setOrigin(0.5);
         
-        // 死區顯示
         this.deadZoneGraphics = this.add.graphics();
     }
     
@@ -334,13 +391,12 @@ class GameScene extends Phaser.Scene {
             if (this.isPointerDown && this.gameState === 'idle') {
                 this.pointerX = pointer.x;
                 
-                // 判斷天車方向
                 if (pointer.x < this.deadZoneLeft) {
-                    this.trolleyDirection = -1;  // 向左
+                    this.trolleyDirection = -1;
                 } else if (pointer.x > this.deadZoneRight) {
-                    this.trolleyDirection = 1;   // 向右
+                    this.trolleyDirection = 1;
                 } else {
-                    this.trolleyDirection = 0;   // 停止
+                    this.trolleyDirection = 0;
                 }
             }
         });
@@ -373,13 +429,16 @@ class GameScene extends Phaser.Scene {
                 trolleyX: this.trolleyX,
                 trolleyDirection: this.trolleyDirection,
                 ropeTopX: this.ropeTopX,
+                ropeTopY: this.ropeTopY,
                 ropeBottomX: this.ropeBottomX,
+                ropeBottomY: this.ropeBottomY,
+                ropeLength: this.ropeLength,
+                ropeOnSpool: this.getRopeOnSpool(),
                 clawX: this.clawContainer.x,
                 clawY: this.clawContainer.y,
                 clawAngle: Phaser.Math.RadToDeg(this.clawAngle),
                 clawAngularVel: this.clawAngularVel,
-                ropeLength: this.ropeLength,
-                deadZone: `${this.deadZoneLeft}~${this.deadZoneRight}`,
+                deadZone: `${Math.round(this.deadZoneLeft)}~${Math.round(this.deadZoneRight)}`,
                 pointerX: this.pointerX
             };
             console.table(state);
@@ -395,6 +454,7 @@ class GameScene extends Phaser.Scene {
         };
         
         console.log('✅ 控制命令就緒');
+        console.log('可用命令：getState(), startRecording(), stopRecording(), dropClaw()');
     }
     
     startDropping() {
@@ -405,43 +465,39 @@ class GameScene extends Phaser.Scene {
     }
     
     updateRopeVisual() {
+        // 繩索線條
         this.ropeGraphics.clear();
-        this.ropeGraphics.lineStyle(3, 0xcccccc);
+        this.ropeGraphics.lineStyle(PHYSICS_CONSTANTS.ROPE_THICKNESS, 0xcccccc);
         this.ropeGraphics.beginPath();
         this.ropeGraphics.moveTo(this.ropeTopX, this.ropeTopY);
         this.ropeGraphics.lineTo(this.ropeBottomX, this.ropeBottomY);
         this.ropeGraphics.strokePath();
+        
+        // 繩索與捲軸的連接點
+        this.ropeGraphics.fillStyle(0xcccccc, 1);
+        this.ropeGraphics.fillCircle(this.ropeTopX, this.ropeTopY, 4);
+        
+        // 繩索與爪子的連接點
+        this.ropeGraphics.fillStyle(0xcccccc, 1);
+        this.ropeGraphics.fillCircle(this.ropeBottomX, this.ropeBottomY, 4);
     }
     
     update(time, delta) {
         this.frameCount++;
         
-        // 更新天車
         this.updateTrolley();
-        
-        // 更新繩索物理
         this.updateRopePhysics();
-        
-        // 更新爪子物理
         this.updateClawPhysics();
-        
-        // 更新抓取
         this.updateGrabCheck();
-        
-        // 更新被抓取的獎品
         this.updateCaughtPrize();
-        
-        // 更新視覺
         this.updateVisuals();
         
-        // 記錄
         if (this.validation) {
             this.validation.recordFrame();
         }
     }
     
     updateTrolley() {
-        // 天車均速移動
         if (this.trolleyDirection !== 0) {
             this.trolleyX += this.trolleyDirection * PHYSICS_CONSTANTS.TROLLEY_SPEED;
             this.trolleyX = Phaser.Math.Clamp(this.trolleyX, 30, 510);
@@ -481,47 +537,53 @@ class GameScene extends Phaser.Scene {
     
     updateClawPhysics() {
         if (this.gameState === 'idle' || this.gameState === 'dropping') {
-            // 繩索下端位置（獨立計算）
-            const targetBottomX = this.ropeTopX + Math.sin(this.clawAngle) * this.ropeLength;
-            const targetBottomY = this.ropeTopY + Math.cos(this.clawAngle) * this.ropeLength;
+            // 單擺運動方程
+            const g = PHYSICS_CONSTANTS.CLAW_GRAVITY;
+            const L = this.ropeLength;
+            const theta = this.clawAngle;
+            const thetaVel = this.clawAngularVel;
+            const aTop = this.trolleyDirection * PHYSICS_CONSTANTS.TROLLEY_SPEED;
+            const b = PHYSICS_CONSTANTS.PENDULUM_DAMPING;
             
-            // 繩索下端延遲跟隨
-            this.ropeBottomX += (targetBottomX - this.ropeBottomX) * 0.5;
-            this.ropeBottomY += (targetBottomY - this.ropeBottomY) * 0.5;
+            // θ'' = -(g/L) × sin(θ) + (aTop/L) × cos(θ) - b × θ'
+            const gravityTorque = -(g / L) * Math.sin(theta);
+            const driveTorque = (aTop / L) * Math.cos(theta);
+            const dampingTorque = -b * thetaVel;
             
-            // 爪子角度物理（鐘擺）
-            const gravityTangential = PHYSICS_CONSTANTS.CLAW_GRAVITY * Math.sin(this.clawAngle);
-            this.clawAngularVel += gravityTangential;
+            const angularAcceleration = gravityTorque + driveTorque + dampingTorque;
             
-            // 天車移動影響（甩爪來源）
-            if (this.trolleyDirection !== 0) {
-                this.clawAngularVel -= this.trolleyDirection * 0.3;
-            }
-            
-            this.clawAngularVel *= PHYSICS_CONSTANTS.PENDULUM_DAMPING;
+            this.clawAngularVel += angularAcceleration;
             this.clawAngularVel *= PHYSICS_CONSTANTS.AIR_RESISTANCE;
-            
             this.clawAngle += this.clawAngularVel;
             
             // 角度限制
-            const maxAngle = Phaser.Math.DegToRad(PHYSICS_CONSTANTS.SLANT_LIMIT);
-            if (this.clawAngle > maxAngle) {
-                this.clawAngle = maxAngle;
-                this.clawAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_BOUNCE;
-            } else if (this.clawAngle < -maxAngle) {
-                this.clawAngle = -maxAngle;
-                this.clawAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_BOUNCE;
-            }
+            this.applyAngleLimits();
             
             // 牆壁碰撞
-            const predictedClawX = this.ropeTopX + Math.sin(this.clawAngle) * this.ropeLength;
-            if (predictedClawX <= PHYSICS_CONSTANTS.WALL_LEFT) {
-                this.clawAngle = Math.asin((PHYSICS_CONSTANTS.WALL_LEFT - this.ropeTopX) / this.ropeLength);
-                this.clawAngularVel *= -0.3;
-            } else if (predictedClawX >= PHYSICS_CONSTANTS.WALL_RIGHT) {
-                this.clawAngle = Math.asin((PHYSICS_CONSTANTS.WALL_RIGHT - this.ropeTopX) / this.ropeLength);
-                this.clawAngularVel *= -0.3;
-            }
+            this.applyWallCollision();
+        }
+    }
+    
+    applyAngleLimits() {
+        const maxAngle = Phaser.Math.DegToRad(PHYSICS_CONSTANTS.SLANT_LIMIT);
+        if (this.clawAngle > maxAngle) {
+            this.clawAngle = maxAngle;
+            this.clawAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_BOUNCE;
+        } else if (this.clawAngle < -maxAngle) {
+            this.clawAngle = -maxAngle;
+            this.clawAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_BOUNCE;
+        }
+    }
+    
+    applyWallCollision() {
+        const predictedClawX = this.ropeTopX + Math.sin(this.clawAngle) * this.ropeLength;
+        
+        if (predictedClawX <= PHYSICS_CONSTANTS.WALL_LEFT) {
+            this.clawAngle = Math.asin((PHYSICS_CONSTANTS.WALL_LEFT - this.ropeTopX) / this.ropeLength);
+            this.clawAngularVel *= -0.3;
+        } else if (predictedClawX >= PHYSICS_CONSTANTS.WALL_RIGHT) {
+            this.clawAngle = Math.asin((PHYSICS_CONSTANTS.WALL_RIGHT - this.ropeTopX) / this.ropeLength);
+            this.clawAngularVel *= -0.3;
         }
     }
     
@@ -664,19 +726,36 @@ class GameScene extends Phaser.Scene {
     }
     
     updateVisuals() {
+        // 計算繩索下端位置
+        if (this.gameState === 'idle' || this.gameState === 'dropping') {
+            this.ropeBottomX = this.ropeTopX + Math.sin(this.clawAngle) * this.ropeLength;
+            this.ropeBottomY = this.ropeTopY + Math.cos(this.clawAngle) * this.ropeLength;
+        } else if (this.gameState === 'grabbing' || this.gameState === 'lifting') {
+            this.ropeBottomX = this.ropeTopX + Math.sin(this.clawAngle) * this.ropeLength;
+            this.ropeBottomY = this.ropeTopY + Math.cos(this.clawAngle) * this.ropeLength;
+        }
+        
         // 更新爪子位置
         this.clawContainer.x = this.ropeBottomX;
         this.clawContainer.y = this.ropeBottomY;
         this.clawContainer.angle = Phaser.Math.RadToDeg(this.clawAngle);
         
-        // 更新繩索
+        // 更新繩索視覺
         this.updateRopeVisual();
+        
+        // 更新捲軸視覺
+        this.updateSpoolVisual();
         
         // 更新死區顯示
         this.deadZoneGraphics.clear();
         if (this.isPointerDown && this.gameState === 'idle') {
             this.deadZoneGraphics.lineStyle(2, 0xff0000, 0.5);
             this.deadZoneGraphics.strokeRect(
+                this.deadZoneLeft, 0,
+                this.deadZoneRight - this.deadZoneLeft, 960
+            );
+            this.deadZoneGraphics.fillStyle(0xff0000, 0.1);
+            this.deadZoneGraphics.fillRect(
                 this.deadZoneLeft, 0,
                 this.deadZoneRight - this.deadZoneLeft, 960
             );
