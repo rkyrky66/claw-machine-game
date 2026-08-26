@@ -535,34 +535,39 @@ class GameScene extends Phaser.Scene {
         }
     }
     
-    updateClawPhysics() {
-        if (this.gameState === 'idle' || this.gameState === 'dropping') {
-            // 單擺運動方程
-            const g = PHYSICS_CONSTANTS.CLAW_GRAVITY;
-            const L = this.ropeLength;
-            const theta = this.clawAngle;
-            const thetaVel = this.clawAngularVel;
-            const aTop = this.trolleyDirection * PHYSICS_CONSTANTS.TROLLEY_SPEED;
-            const b = PHYSICS_CONSTANTS.PENDULUM_DAMPING;
-            
-            // θ'' = -(g/L) × sin(θ) + (aTop/L) × cos(θ) - b × θ'
-            const gravityTorque = -(g / L) * Math.sin(theta);
-            const driveTorque = (aTop / L) * Math.cos(theta);
-            const dampingTorque = -b * thetaVel;
-            
-            const angularAcceleration = gravityTorque + driveTorque + dampingTorque;
-            
-            this.clawAngularVel += angularAcceleration;
-            this.clawAngularVel *= PHYSICS_CONSTANTS.AIR_RESISTANCE;
-            this.clawAngle += this.clawAngularVel;
-            
-            // 角度限制
-            this.applyAngleLimits();
-            
-            // 牆壁碰撞
-            this.applyWallCollision();
-        }
+  updateClawPhysics() {
+    if (this.gameState === 'idle' || this.gameState === 'dropping') {
+        const g = PHYSICS_CONSTANTS.CLAW_GRAVITY;
+        const L = this.ropeLength;
+        const theta = this.clawAngle;
+        const thetaVel = this.clawAngularVel;
+        
+        // 天車加速度（注意：這是加速度，不是速度）
+        const aTop = this.trolleyDirection * PHYSICS_CONSTANTS.TROLLEY_SPEED;
+        const b = PHYSICS_CONSTANTS.PENDULUM_DAMPING;
+        
+        // 重力恢復力矩
+        const gravityTorque = -(g / L) * Math.sin(theta);
+        
+        // ✅ 修正：驅動力矩方向反轉
+        // 天車向右加速 → 爪子慣性向左
+        // 天車向左加速 → 爪子慣性向右
+        const driveTorque = -(aTop / L) * Math.cos(theta);
+        
+        // 阻尼力矩
+        const dampingTorque = -b * thetaVel;
+        
+        // 總角加速度
+        const angularAcceleration = gravityTorque + driveTorque + dampingTorque;
+        
+        this.clawAngularVel += angularAcceleration;
+        this.clawAngularVel *= PHYSICS_CONSTANTS.AIR_RESISTANCE;
+        this.clawAngle += this.clawAngularVel;
+        
+        this.applyAngleLimits();
+        this.applyWallCollision();
     }
+}
     
     applyAngleLimits() {
         const maxAngle = Phaser.Math.DegToRad(PHYSICS_CONSTANTS.SLANT_LIMIT);
