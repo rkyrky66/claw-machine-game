@@ -548,7 +548,12 @@ class GameScene extends Phaser.Scene {
     }
     
     updateClawPhysics() {
-        if (this.gameState === 'idle' || this.gameState === 'dropping') {
+        // 只在 idle / dropping / lifting 時執行擺盪
+        // grabbing 時爪子閉合，暫停擺盪
+        if (this.gameState === 'idle' || 
+            this.gameState === 'dropping' || 
+            this.gameState === 'lifting') {
+            
             const g = PHYSICS_CONSTANTS.CLAW_GRAVITY;
             const L = this.ropeLength;
             const theta = this.clawAngle;
@@ -584,15 +589,35 @@ class GameScene extends Phaser.Scene {
     }
     
     applyWallCollision() {
-        // 使用反轉後的位置計算
+        // 預測爪子位置
         const predictedClawX = this.ropeTopX - Math.sin(this.clawAngle) * this.ropeLength;
         
+        // 左牆碰撞
         if (predictedClawX <= PHYSICS_CONSTANTS.WALL_LEFT) {
-            this.clawAngle = -Math.asin((this.ropeTopX - PHYSICS_CONSTANTS.WALL_LEFT) / this.ropeLength);
-            this.clawAngularVel *= -0.3;
-        } else if (predictedClawX >= PHYSICS_CONSTANTS.WALL_RIGHT) {
-            this.clawAngle = -Math.asin((this.ropeTopX - PHYSICS_CONSTANTS.WALL_RIGHT) / this.ropeLength);
-            this.clawAngularVel *= -0.3;
+            // 計算碰牆的臨界角度（不直接用 asin，改用 atan2 避免 NaN）
+            const dx = this.ropeTopX - PHYSICS_CONSTANTS.WALL_LEFT;
+            const dy = Math.sqrt(Math.max(1, this.ropeLength * this.ropeLength - dx * dx));
+            const criticalAngle = Math.atan2(dx, dy);
+            
+            // 夾住角度
+            this.clawAngle = criticalAngle;
+            
+            // 反轉角速度（反彈）
+            if (this.clawAngularVel > 0) {
+                this.clawAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_BOUNCE;
+            }
+        }
+        // 右牆碰撞
+        else if (predictedClawX >= PHYSICS_CONSTANTS.WALL_RIGHT) {
+            const dx = this.ropeTopX - PHYSICS_CONSTANTS.WALL_RIGHT;
+            const dy = Math.sqrt(Math.max(1, this.ropeLength * this.ropeLength - dx * dx));
+            const criticalAngle = Math.atan2(dx, dy);
+            
+            this.clawAngle = criticalAngle;
+            
+            if (this.clawAngularVel < 0) {
+                this.clawAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_BOUNCE;
+            }
         }
     }
     
