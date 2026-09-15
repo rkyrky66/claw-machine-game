@@ -775,7 +775,7 @@ class GameScene extends Phaser.Scene {
             
             // 目前 offset 指示
             this.deadZoneGraphics.fillStyle(0x00ffff, 0.8);
-            this.deadZoneGraphics.fillCircle(pointer?.x || this.pointerX, 480, 4);
+            this.deadZoneGraphics.fillCircle(this.pointerX, 480, 4);
         }
     }
 }
