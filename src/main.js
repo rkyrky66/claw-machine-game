@@ -547,8 +547,6 @@ class GameScene extends Phaser.Scene {
     }
     
     updateClawPhysics() {
-        // 只在 idle / dropping / lifting 時執行擺盪
-        // grabbing 時爪子閉合，暫停擺盪
         if (this.gameState === 'idle' || 
             this.gameState === 'dropping' || 
             this.gameState === 'lifting') {
@@ -560,18 +558,28 @@ class GameScene extends Phaser.Scene {
             const aTop = this.trolleyAcceleration;
             const b = PHYSICS_CONSTANTS.PENDULUM_DAMPING;
             
-            // θ'' = -(g/L)sin(θ) + (aTop/L)cos(θ) - bθ'
+            // 重力恢復力矩
             const gravityTorque = -(g / L) * Math.sin(theta);
+            
+            // 天車驅動力矩
             const driveTorque = (aTop / L) * Math.cos(theta);
-            const dampingTorque = -b * thetaVel;
+            
+            // 速度相關阻尼：低速時阻尼減弱（強化端點滯空）
+            const speedFactor = Math.min(1, Math.abs(thetaVel) * 20);
+            const dampingTorque = -b * thetaVel * speedFactor;
             
             const angularAcceleration = gravityTorque + driveTorque + dampingTorque;
             
+            // 半隱式歐拉
             this.clawAngularVel += angularAcceleration;
-            this.clawAngularVel *= PHYSICS_CONSTANTS.AIR_RESISTANCE;
+            
+            // 空氣阻力：只在有明顯速度時生效
+            if (Math.abs(this.clawAngularVel) > 0.001) {
+                this.clawAngularVel *= PHYSICS_CONSTANTS.AIR_RESISTANCE;
+            }
+            
             this.clawAngle += this.clawAngularVel;
             
-            // 移除 applyAngleLimits()
             this.applyWallCollision();
         }
     }
