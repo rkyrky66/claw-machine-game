@@ -1,10 +1,9 @@
 // ==================== 物理常數 ====================
 const PHYSICS_CONSTANTS = {
     // 控制系統
-    DEAD_ZONE_WIDTH: 15,
-    TROLLEY_MAX_SPEED: 6,
-    TROLLEY_ACCELERATION: 0.3,
-    TROLLEY_DECELERATION: 0.5,
+    DEAD_ZONE: 10,            // 判斷方向的最小偏移
+    DRAG_THRESHOLD: 40,       // anchor 開始跟隨的距離
+    TROLLEY_SPEED: 6,         // 天車均速
     
     // 繩索參數
     ROPE_MAX_LENGTH: 700,
@@ -107,11 +106,10 @@ class GameScene extends Phaser.Scene {
         this.trolleyDirection = 0;
         this.previousTrolleyVelocity = 0;
         
-        // 死區控制
-        this.deadZoneCenter = 270;
-        this.deadZoneLeft = 270 - PHYSICS_CONSTANTS.DEAD_ZONE_WIDTH;
-        this.deadZoneRight = 270 + PHYSICS_CONSTANTS.DEAD_ZONE_WIDTH;
-        this.pointerX = 270;
+        // 浮動搖桿控制
+        this.anchorX = 270;         // 搖桿中心
+        this.pointerX = 270;        // 目前手指位置
+        this.offsetX = 0;           // 手指相對 anchor 的偏移
         this.isPointerDown = false;
         
         // 繩索狀態
@@ -377,9 +375,8 @@ class GameScene extends Phaser.Scene {
             if (this.gameState === 'idle') {
                 this.isPointerDown = true;
                 this.pointerX = pointer.x;
-                this.deadZoneCenter = pointer.x;
-                this.deadZoneLeft = pointer.x - PHYSICS_CONSTANTS.DEAD_ZONE_WIDTH;
-                this.deadZoneRight = pointer.x + PHYSICS_CONSTANTS.DEAD_ZONE_WIDTH;
+                this.anchorX = pointer.x;   // 按下的點就是搖桿中心
+                this.offsetX = 0;
                 this.trolleyDirection = 0;
             }
         });
@@ -388,9 +385,24 @@ class GameScene extends Phaser.Scene {
             if (this.isPointerDown && this.gameState === 'idle') {
                 this.pointerX = pointer.x;
                 
-                if (pointer.x < this.deadZoneLeft) {
+                // 計算 offset
+                let offset = pointer.x - this.anchorX;
+                
+                // anchor 跟隨：超過 DRAG_THRESHOLD 就拖走 anchor
+                if (offset > PHYSICS_CONSTANTS.DRAG_THRESHOLD) {
+                    this.anchorX = pointer.x - PHYSICS_CONSTANTS.DRAG_THRESHOLD;
+                    offset = PHYSICS_CONSTANTS.DRAG_THRESHOLD;
+                } else if (offset < -PHYSICS_CONSTANTS.DRAG_THRESHOLD) {
+                    this.anchorX = pointer.x + PHYSICS_CONSTANTS.DRAG_THRESHOLD;
+                    offset = -PHYSICS_CONSTANTS.DRAG_THRESHOLD;
+                }
+                
+                this.offsetX = offset;
+                
+                // 判斷方向
+                if (offset < -PHYSICS_CONSTANTS.DEAD_ZONE) {
                     this.trolleyDirection = -1;
-                } else if (pointer.x > this.deadZoneRight) {
+                } else if (offset > PHYSICS_CONSTANTS.DEAD_ZONE) {
                     this.trolleyDirection = 1;
                 } else {
                     this.trolleyDirection = 0;
@@ -492,23 +504,10 @@ class GameScene extends Phaser.Scene {
         // 保存前次速度
         this.previousTrolleyVelocity = this.trolleyVelocity;
         
-        // 目標速度
-        const targetVelocity = this.trolleyDirection * PHYSICS_CONSTANTS.TROLLEY_MAX_SPEED;
+        // 均速移動：方向決定速度
+        this.trolleyVelocity = this.trolleyDirection * PHYSICS_CONSTANTS.TROLLEY_SPEED;
         
-        // 平滑加速/減速
-        if (this.trolleyVelocity < targetVelocity) {
-            this.trolleyVelocity = Math.min(
-                this.trolleyVelocity + PHYSICS_CONSTANTS.TROLLEY_ACCELERATION,
-                targetVelocity
-            );
-        } else if (this.trolleyVelocity > targetVelocity) {
-            this.trolleyVelocity = Math.max(
-                this.trolleyVelocity - PHYSICS_CONSTANTS.TROLLEY_DECELERATION,
-                targetVelocity
-            );
-        }
-        
-        // 計算加速度
+        // 計算加速度（只在方向切換那一幀有值，這是甩爪的動力來源）
         this.trolleyAcceleration = this.trolleyVelocity - this.previousTrolleyVelocity;
         
         // 更新位置
@@ -753,19 +752,30 @@ class GameScene extends Phaser.Scene {
         // 更新捲軸視覺
         this.updateSpoolVisual();
         
-        // 更新死區顯示
+        // 更新搖桿視覺
         this.deadZoneGraphics.clear();
         if (this.isPointerDown && this.gameState === 'idle') {
-            this.deadZoneGraphics.lineStyle(2, 0xff0000, 0.5);
+            // anchor 位置
+            this.deadZoneGraphics.lineStyle(2, 0x00ff00, 0.6);
+            this.deadZoneGraphics.strokeCircle(this.anchorX, 480, 6);
+            
+            // DEAD_ZONE 範圍
+            this.deadZoneGraphics.lineStyle(1, 0xffff00, 0.4);
             this.deadZoneGraphics.strokeRect(
-                this.deadZoneLeft, 0,
-                this.deadZoneRight - this.deadZoneLeft, 960
+                this.anchorX - PHYSICS_CONSTANTS.DEAD_ZONE, 0,
+                PHYSICS_CONSTANTS.DEAD_ZONE * 2, 960
             );
-            this.deadZoneGraphics.fillStyle(0xff0000, 0.1);
-            this.deadZoneGraphics.fillRect(
-                this.deadZoneLeft, 0,
-                this.deadZoneRight - this.deadZoneLeft, 960
+            
+            // DRAG_THRESHOLD 範圍
+            this.deadZoneGraphics.lineStyle(1, 0xff0000, 0.3);
+            this.deadZoneGraphics.strokeRect(
+                this.anchorX - PHYSICS_CONSTANTS.DRAG_THRESHOLD, 0,
+                PHYSICS_CONSTANTS.DRAG_THRESHOLD * 2, 960
             );
+            
+            // 目前 offset 指示
+            this.deadZoneGraphics.fillStyle(0x00ffff, 0.8);
+            this.deadZoneGraphics.fillCircle(pointer?.x || this.pointerX, 480, 4);
         }
     }
 }
