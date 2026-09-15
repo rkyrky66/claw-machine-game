@@ -6,19 +6,23 @@ const PHYSICS_CONSTANTS = {
     TROLLEY_SPEED: 4,        // 天車移動速度
     
         // 鐵片（限位器）
-    PLATE_HEIGHT: 200,           // 鐵片高度（預設值）
+    PLATE_HEIGHT: 100,           // 鐵片高度（預設值）
     PLATE_THICKNESS: 10,         // 鐵片厚度
     PLATE_WIDTH: 80,             // 鐵片寬度
-    PLATE_MIN_Y: 100,            // 鐵片最小高度（靠近天車）
-    PLATE_MAX_Y: 400,            // 鐵片最大高度（靠近爪子）
+    PLATE_MIN_Y: 70,             // 鐵片最小高度（靠近天車）
+    PLATE_MAX_Y: 130,            // 鐵片最大高度（靠近爪子）
     
     // 爪子頂端尺寸
     CLAW_HEAD_WIDTH: 50,         // 爪子頂端寬度
     CLAW_HEAD_HEIGHT: 20,        // 爪子頂端高度
     
     // 壓縮（碰撞）
-    COMPRESSION_DELAY: 5,        // 壓縮持續幀數
+    COMPRESSION_DELAY: 5,        // 壓縮持續幀數（最小值）
+    COMPRESSION_MAX_DELAY: 15,   // 壓縮持續幀數（最大值，給能量疊加用）
     COMPRESSION_BOUNCE: 0.7,     // 反彈係數
+    COMPRESSION_ENERGY_GAIN: 0.4,// 能量疊加係數（天車反推時）
+    PLATE_PUSH_OFFSET: 3,        // 鐵片被推擠的視覺偏移量
+    PLATE_PUSH_RECOVER: 0.3,     // 鐵片恢復速度
 
     // 繩索速度（可在 UI 調整）
     // ROPE_RELEASE_SPEED 和 ROPE_RETRACT_SPEED 已存在
@@ -93,6 +97,11 @@ class ValidationSystem {
             ropeBottomX: scene.ropeBottomX,
             ropeBottomY: scene.ropeBottomY,
             ropeLength: scene.ropeLength,
+            plateY: scene.plateY,
+            plateOffsetX: scene.plateOffsetX,
+            isCompressing: scene.isCompressing,
+            compressionFrame: scene.compressionFrame,
+            compressionEnergy: scene.compressionEnergy,
             clawX: scene.clawContainer.x,
             clawY: scene.clawContainer.y,
             clawAngleDeg: Phaser.Math.RadToDeg(scene.clawAngle),
@@ -146,11 +155,14 @@ class GameScene extends Phaser.Scene {
                 // 鐵片狀態
         this.plateY = PHYSICS_CONSTANTS.PLATE_HEIGHT;
         this.plateOffsetX = 0;        // 鐵片被推擠的偏移
+        this.platePushVel = 0;        // 鐵片推擠速度（彈性恢復用）
         
         // 壓縮狀態
         this.isCompressing = false;
         this.compressionFrame = 0;
         this.compressionSide = 0;     // -1 左壓, 1 右壓
+        this.compressionDelay = 0;    // 動態壓縮時間（能量疊加用）
+        this.compressionEnergy = 0;   // 累積的能量（天車反推時增加）
         // 遊戲狀態
         this.gameState = 'idle';
         this.caughtPrizeId = null;
@@ -219,8 +231,8 @@ class GameScene extends Phaser.Scene {
             {
                 label: '鐵片高度',
                 key: 'PLATE_HEIGHT',
-                min: 100,
-                max: 400,
+                min: 70,
+                max: 130,
                 value: PHYSICS_CONSTANTS.PLATE_HEIGHT,
                 y: 430,
                 color: 0x888888,
@@ -277,6 +289,9 @@ class GameScene extends Phaser.Scene {
             this.input.setDraggable(handle);
             
             handle.on('drag', (pointer, dragX, dragY) => {
+                // 遊玩時鎖定滑桿
+                if (this.gameState !== 'idle') return;
+                
                 const clampedX = Phaser.Math.Clamp(dragX, sliderX, sliderX + sliderWidth);
                 handle.x = clampedX;
                 
@@ -294,6 +309,9 @@ class GameScene extends Phaser.Scene {
             
             track.setInteractive();
             track.on('pointerdown', (pointer) => {
+                // 遊玩時鎖定滑桿
+                if (this.gameState !== 'idle') return;
+                
                 const clampedX = Phaser.Math.Clamp(pointer.x, sliderX, sliderX + sliderWidth);
                 handle.x = clampedX;
                 
@@ -440,26 +458,34 @@ class GameScene extends Phaser.Scene {
     updatePlateVisual() {
         this.plateGraphics.clear();
         
-        const plateX = this.ropeTopX + this.plateOffsetX;
+        const plateX = this.trolleyX + this.plateOffsetX;
         const plateY = this.plateY;
         const w = PHYSICS_CONSTANTS.PLATE_WIDTH;
         const t = PHYSICS_CONSTANTS.PLATE_THICKNESS;
         
-        // 鐵片本體
-        this.plateGraphics.fillStyle(0x888888, 1);
+        // 鐵片本體（壓縮時變橘色，平時灰色）
+        if (this.isCompressing) {
+            this.plateGraphics.fillStyle(0xff6600, 1);
+        } else {
+            this.plateGraphics.fillStyle(0x888888, 1);
+        }
         this.plateGraphics.fillRect(
             plateX - w/2, plateY - t/2,
             w, t
         );
         
-        // 鐵片邊緣
-        this.plateGraphics.lineStyle(2, 0xaaaaaa, 1);
+        // 鐵片邊緣（推擠時變紅，平時淺灰）
+        if (Math.abs(this.plateOffsetX) > 0.5 || this.isCompressing) {
+            this.plateGraphics.lineStyle(2, 0xff4444, 1);
+        } else {
+            this.plateGraphics.lineStyle(2, 0xaaaaaa, 1);
+        }
         this.plateGraphics.strokeRect(
             plateX - w/2, plateY - t/2,
             w, t
         );
         
-        // 連接天車的桿
+        // 連接天車的桿（從天車底部到鐵片頂部）
         this.plateGraphics.lineStyle(3, 0x666666, 1);
         this.plateGraphics.beginPath();
         this.plateGraphics.moveTo(this.trolleyX, 65);
@@ -467,14 +493,7 @@ class GameScene extends Phaser.Scene {
         this.plateGraphics.strokePath();
     }
 
-    createRopeSpool() {
-        this.ropeSpoolGraphics = this.add.graphics();
-    }
-    
-    getRopeOnSpool() {
-        return Math.max(0, PHYSICS_CONSTANTS.ROPE_MAX_LENGTH - this.ropeLength);
-    }
-    
+
 
     
     createRope() {
@@ -616,9 +635,17 @@ class GameScene extends Phaser.Scene {
                 trolleyAcceleration: this.trolleyAcceleration,
                 trolleyDirection: this.trolleyDirection,
                 ropeTopX: this.ropeTopX,
+                ropeTopY: this.ropeTopY,
                 ropeBottomX: this.ropeBottomX,
                 ropeBottomY: this.ropeBottomY,
                 ropeLength: this.ropeLength,
+                plateY: this.plateY,
+                plateOffsetX: this.plateOffsetX,
+                isCompressing: this.isCompressing,
+                compressionFrame: this.compressionFrame,
+                compressionSide: this.compressionSide,
+                compressionDelay: this.compressionDelay,
+                compressionEnergy: this.compressionEnergy,
                 clawX: this.clawContainer.x,
                 clawY: this.clawContainer.y,
                 clawAngleDeg: Phaser.Math.RadToDeg(this.clawAngle),
@@ -646,6 +673,12 @@ class GameScene extends Phaser.Scene {
         this.statusText.setText('繩索釋放中...');
         this.ropeTargetLength = PHYSICS_CONSTANTS.ROPE_MAX_LENGTH;
         this.clawOpenAmount = 1;
+        
+        // 鎖定鐵片高度：以按下當下的值為準
+        // 遊玩中 BAR 拖動不會影響 plateY
+        this.plateY = PHYSICS_CONSTANTS.PLATE_HEIGHT;
+        
+        console.log(`🎯 下爪開始，鐵片高度鎖定為 ${this.plateY}`);
     }
     
     updateRopeVisual() {
@@ -696,8 +729,8 @@ class GameScene extends Phaser.Scene {
         // 繩索上端延遲跟隨天車
         const ropeTopTargetX = this.trolleyX;
         this.ropeTopX += (ropeTopTargetX - this.ropeTopX) * PHYSICS_CONSTANTS.ROPE_STIFFNESS;
-        // 繩索上端 Y = 鐵片下緣（不是天車）
-        this.ropeTopY = this.plateY + PHYSICS_CONSTANTS.PLATE_THICKNESS / 2;
+        // 繩索上端 Y = 天車底部（繩索從天車算長度）
+        this.ropeTopY = 65;
     }
     
     updateRopePhysics() {
@@ -761,6 +794,7 @@ class GameScene extends Phaser.Scene {
             this.applyWallCollision();
             this.applyPlateCollision();
             this.updateCompression();
+            this.updatePlateRecovery();
         }
     }
 
@@ -807,8 +841,8 @@ class GameScene extends Phaser.Scene {
         const headTop = headCenterY - headH / 2;
         const headBottom = headCenterY + headH / 2;
         
-        // 鐵片矩形範圍
-        const plateX = this.ropeTopX + this.plateOffsetX;
+        // 鐵片矩形範圍（跟隨天車 + 推擠偏移）
+        const plateX = this.trolleyX + this.plateOffsetX;
         const plateW = PHYSICS_CONSTANTS.PLATE_WIDTH;
         const plateT = PHYSICS_CONSTANTS.PLATE_THICKNESS;
         const plateLeft = plateX - plateW / 2;
@@ -825,7 +859,7 @@ class GameScene extends Phaser.Scene {
             const side = this.clawAngularVel > 0 ? 1 : -1;
             
             // 檢查角速度方向是否往鐵片
-            const clawDirection = Math.sign(this.clawContainer.x - this.ropeTopX);
+            const clawDirection = Math.sign(this.clawContainer.x - this.trolleyX);
             if (Math.sign(this.clawAngularVel) === clawDirection || clawDirection === 0) {
                 this.startCompression(side);
             }
@@ -836,7 +870,13 @@ class GameScene extends Phaser.Scene {
         this.isCompressing = true;
         this.compressionFrame = 0;
         this.compressionSide = side;
-        console.log(`🔴 壓縮開始，方向：${side > 0 ? '右' : '左'}`);
+        this.compressionDelay = PHYSICS_CONSTANTS.COMPRESSION_DELAY;
+        this.compressionEnergy = 0;
+        
+        // 鐵片被推擠：往壓縮方向偏移
+        this.platePushVel = side * 0.5;
+        
+        console.log(`🔴 壓縮開始，方向：${side > 0 ? '右' : '左'}，角速度：${this.clawAngularVel.toFixed(4)}`);
     }
     
     updateCompression() {
@@ -844,34 +884,83 @@ class GameScene extends Phaser.Scene {
         
         this.compressionFrame++;
         
-        // 視覺：爪子頂端往鐵片方向縮進
-        const progress = this.compressionFrame / PHYSICS_CONSTANTS.COMPRESSION_DELAY;
-        const offset = Math.min(progress, 1) * 3 * this.compressionSide;
+        // 能量疊加：如果天車往壓縮方向的反方向移動
+        // 例：爪子壓縮在左（side = -1），天車往右（direction = 1）
+        // → 加大壓縮量，延長壓縮時間
+        if (this.trolleyDirection !== 0 && 
+            Math.sign(this.trolleyDirection) === -this.compressionSide) {
+            
+            // 天車反推，能量疊加
+            this.compressionEnergy += PHYSICS_CONSTANTS.COMPRESSION_ENERGY_GAIN;
+            
+            // 延長壓縮時間（最多到 MAX_DELAY）
+            this.compressionDelay = Math.min(
+                this.compressionDelay + 1,
+                PHYSICS_CONSTANTS.COMPRESSION_MAX_DELAY
+            );
+            
+            console.log(`⚡ 能量疊加！energy=${this.compressionEnergy.toFixed(2)}, delay=${this.compressionDelay}`);
+        }
         
-        // 爪子頂端視覺偏移（暫時不影響物理）
-        // 這只是視覺效果
+        // 鐵片推擠視覺：根據壓縮能量，鐵片被推得更遠
+        const pushAmount = this.compressionSide * 
+                          (PHYSICS_CONSTANTS.PLATE_PUSH_OFFSET + this.compressionEnergy * 0.5);
+        this.plateOffsetX = pushAmount;
         
         // 壓縮結束
-        if (this.compressionFrame >= PHYSICS_CONSTANTS.COMPRESSION_DELAY) {
+        if (this.compressionFrame >= this.compressionDelay) {
             this.releaseCompression();
         }
     }
     
     releaseCompression() {
-        // 反彈
-        this.clawAngularVel = -this.compressionSide * 
-                              Math.abs(this.clawAngularVel) * 
-                              PHYSICS_CONSTANTS.COMPRESSION_BOUNCE;
+        // 記錄能量（用於 Console 輸出）
+        const finalEnergy = this.compressionEnergy;
+        
+        // 基礎反彈
+        let reboundVel = -this.compressionSide * 
+                         Math.abs(this.clawAngularVel) * 
+                         PHYSICS_CONSTANTS.COMPRESSION_BOUNCE;
+        
+        // 能量疊加：壓縮期間累積的能量，加上天車當前的速度貢獻
+        if (this.compressionEnergy > 0) {
+            const energyBoost = -this.compressionSide * this.compressionEnergy * 0.1;
+            reboundVel += energyBoost;
+        }
+        
+        // 天車當前的速度也貢獻到反彈
+        if (this.trolleyDirection !== 0 && 
+            Math.sign(this.trolleyDirection) === -this.compressionSide) {
+            reboundVel += -this.compressionSide * Math.abs(this.trolleyVelocity) * 0.05;
+        }
         
         // 如果角速度為零，給一個基礎反彈
-        if (Math.abs(this.clawAngularVel) < 0.01) {
-            this.clawAngularVel = -this.compressionSide * 0.05;
+        if (Math.abs(reboundVel) < 0.01) {
+            reboundVel = -this.compressionSide * 0.05;
         }
+        
+        this.clawAngularVel = reboundVel;
+        
+        // 鐵片恢復（彈性回復）
+        this.platePushVel = -this.compressionSide * 0.8;
         
         this.isCompressing = false;
         this.compressionFrame = 0;
+        this.compressionEnergy = 0;
         
-        console.log(`🟢 反彈，角速度：${this.clawAngularVel.toFixed(4)}`);
+        console.log(`🟢 反彈，角速度：${this.clawAngularVel.toFixed(4)}, 累積能量：${finalEnergy.toFixed(2)}`);
+    }
+    
+    updatePlateRecovery() {
+        // 鐵片彈性恢復
+        this.plateOffsetX += this.platePushVel;
+        this.platePushVel *= PHYSICS_CONSTANTS.PLATE_PUSH_RECOVER;
+        
+        // 當恢復到接近 0 時停止
+        if (Math.abs(this.plateOffsetX) < 0.1 && Math.abs(this.platePushVel) < 0.01) {
+            this.plateOffsetX = 0;
+            this.platePushVel = 0;
+        }
     }
 
     startGrabbing() {
