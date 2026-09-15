@@ -3,7 +3,8 @@ const PHYSICS_CONSTANTS = {
     // 控制系統（可在 UI 調整）
     DEAD_ZONE: 10,
     DRAG_THRESHOLD: 40,
-    TROLLEY_SPEED: 4,        // 天車移動速度
+    TROLLEY_SPEED: 4,            // 天車最大速度
+    TROLLEY_ACCELERATION: 0.5,   // 天車加速度（8 幀達到最大速度）
     
     // 鐵片（限位器）
     PLATE_HEIGHT: 100,           // 鐵片高度（預設值）
@@ -38,7 +39,7 @@ const PHYSICS_CONSTANTS = {
     COIL_SPACING: 2.5,
     
     // 爪子物理（單擺模型）
-    CLAW_GRAVITY: 0.5,
+    CLAW_GRAVITY: 0.8,
     PENDULUM_DAMPING: 0.005,
     AIR_RESISTANCE: 0.999,
     BOUNDARY_BOUNCE: 0.6,
@@ -688,10 +689,18 @@ class GameScene extends Phaser.Scene {
         // 保存前次速度
         this.previousTrolleyVelocity = this.trolleyVelocity;
         
-        // 均速移動：方向決定速度
-        this.trolleyVelocity = this.trolleyDirection * PHYSICS_CONSTANTS.TROLLEY_SPEED;
+        // 目標速度
+        const targetVelocity = this.trolleyDirection * PHYSICS_CONSTANTS.TROLLEY_SPEED;
+        const accel = PHYSICS_CONSTANTS.TROLLEY_ACCELERATION;
         
-        // 計算加速度（只在方向切換那一幀有值，這是甩爪的動力來源）
+        // 平滑加減速（馬達有加速過程）
+        if (this.trolleyVelocity < targetVelocity) {
+            this.trolleyVelocity = Math.min(this.trolleyVelocity + accel, targetVelocity);
+        } else if (this.trolleyVelocity > targetVelocity) {
+            this.trolleyVelocity = Math.max(this.trolleyVelocity - accel, targetVelocity);
+        }
+        
+        // 計算本幀的加速度（持續多幀有值，這是甩爪的動力來源）
         this.trolleyAcceleration = this.trolleyVelocity - this.previousTrolleyVelocity;
         
         // 更新位置
@@ -759,8 +768,8 @@ class GameScene extends Phaser.Scene {
             // 重力恢復力矩（單擺方程，用 L_lower）
             const gravityTorque = -(g / L) * Math.sin(theta);
             
-            // 天車驅動力矩
-            const driveTorque = (aTop / L) * Math.cos(theta);
+            // 天車驅動力矩（鐵片加速向右 → 爪子慣性向左 → 負向）
+            const driveTorque = -(aTop / L) * Math.cos(theta);
             
             // 速度相關阻尼：低速時阻尼減弱
             const speedFactor = Math.min(1, Math.abs(thetaVel) * 20);
