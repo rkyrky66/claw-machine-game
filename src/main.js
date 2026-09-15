@@ -1,9 +1,9 @@
 // ==================== 物理常數 ====================
 const PHYSICS_CONSTANTS = {
     // 控制系統
-    DEAD_ZONE: 10,            // 判斷方向的最小偏移
-    DRAG_THRESHOLD: 40,       // anchor 開始跟隨的距離
-    TROLLEY_SPEED: 6,         // 天車均速
+    DEAD_ZONE: 10,
+    DRAG_THRESHOLD: 40,
+    TROLLEY_SPEED: 4,
     
     // 繩索參數
     ROPE_MAX_LENGTH: 700,
@@ -17,10 +17,9 @@ const PHYSICS_CONSTANTS = {
     
     // 爪子物理（單擺模型）
     CLAW_GRAVITY: 0.5,
-    PENDULUM_DAMPING: 0.005,     // 從 0.02 降到 0.005（減少阻尼）
-    AIR_RESISTANCE: 0.999,       // 從 0.995 升到 0.999（減少空氣阻力）
-    SLANT_LIMIT: 40,
-    BOUNDARY_BOUNCE: 0.4,        // 從 0.25 升到 0.4（撞牆反彈更明顯）
+    PENDULUM_DAMPING: 0.005,
+    AIR_RESISTANCE: 0.999,
+    BOUNDARY_BOUNCE: 0.6,
     WALL_LEFT: 30,
     WALL_RIGHT: 510,
     
@@ -572,42 +571,26 @@ class GameScene extends Phaser.Scene {
             this.clawAngularVel *= PHYSICS_CONSTANTS.AIR_RESISTANCE;
             this.clawAngle += this.clawAngularVel;
             
-            this.applyAngleLimits();
+            // 移除 applyAngleLimits()
             this.applyWallCollision();
         }
     }
-    
-    applyAngleLimits() {
-        const maxAngle = Phaser.Math.DegToRad(PHYSICS_CONSTANTS.SLANT_LIMIT);
-        if (this.clawAngle > maxAngle) {
-            this.clawAngle = maxAngle;
-            this.clawAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_BOUNCE;
-        } else if (this.clawAngle < -maxAngle) {
-            this.clawAngle = -maxAngle;
-            this.clawAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_BOUNCE;
-        }
-    }
+
     
     applyWallCollision() {
-        // 預測爪子位置
         const predictedClawX = this.ropeTopX - Math.sin(this.clawAngle) * this.ropeLength;
         
-        // 左牆碰撞
         if (predictedClawX <= PHYSICS_CONSTANTS.WALL_LEFT) {
-            // 計算碰牆的臨界角度（不直接用 asin，改用 atan2 避免 NaN）
             const dx = this.ropeTopX - PHYSICS_CONSTANTS.WALL_LEFT;
             const dy = Math.sqrt(Math.max(1, this.ropeLength * this.ropeLength - dx * dx));
             const criticalAngle = Math.atan2(dx, dy);
             
-            // 夾住角度
             this.clawAngle = criticalAngle;
             
-            // 反轉角速度（反彈）
             if (this.clawAngularVel > 0) {
                 this.clawAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_BOUNCE;
             }
         }
-        // 右牆碰撞
         else if (predictedClawX >= PHYSICS_CONSTANTS.WALL_RIGHT) {
             const dx = this.ropeTopX - PHYSICS_CONSTANTS.WALL_RIGHT;
             const dy = Math.sqrt(Math.max(1, this.ropeLength * this.ropeLength - dx * dx));
