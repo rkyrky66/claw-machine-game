@@ -7,11 +7,11 @@ const PHYSICS_CONSTANTS = {
     TROLLEY_ACCELERATION: 0.5,   // 天車加速度（8 幀達到最大速度）
     
     // 鐵片（限位器）
-    PLATE_HEIGHT: 100,           // 鐵片高度（預設值）
+    PLATE_HEIGHT: 200,           // 鐵片高度（預設值）
     PLATE_THICKNESS: 10,         // 鐵片厚度
     PLATE_WIDTH: 80,             // 鐵片寬度
-    PLATE_MIN_Y: 75,             // 鐵片最小高度（靠近天車）
-    PLATE_MAX_Y: 155,            // 鐵片最大高度（靠近爪子）
+    PLATE_MIN_Y: 150,            // 鐵片最小高度（靠近天車）
+    PLATE_MAX_Y: 310,            // 鐵片最大高度（靠近爪子）
     
     // 爪子頂端尺寸
     CLAW_HEAD_WIDTH: 50,         // 爪子頂端寬度
@@ -29,8 +29,8 @@ const PHYSICS_CONSTANTS = {
     // ROPE_RELEASE_SPEED 和 ROPE_RETRACT_SPEED 已存在
     
     // 繩索參數
-    ROPE_MAX_LENGTH: 700,
-    ROPE_MIN_LENGTH: 100,
+    ROPE_MAX_LENGTH: 1500,
+    ROPE_MIN_LENGTH: 300,
     ROPE_RELEASE_SPEED: 8,
     ROPE_RETRACT_SPEED: 6,
     ROPE_STIFFNESS: 0.15,
@@ -43,8 +43,8 @@ const PHYSICS_CONSTANTS = {
     PENDULUM_DAMPING: 0.005,
     AIR_RESISTANCE: 0.999,
     BOUNDARY_BOUNCE: 0.6,
-    WALL_LEFT: 30,
-    WALL_RIGHT: 510,
+    WALL_LEFT: 60,
+    WALL_RIGHT: 1020,
     
     // 抓取參數
     GRAB_WAIT_FRAMES: 30,
@@ -123,29 +123,29 @@ class GameScene extends Phaser.Scene {
         super({ key: 'GameScene' });
         
         // 天車狀態
-        this.trolleyX = 270;
+        this.trolleyX = 540;
         this.trolleyVelocity = 0;
         this.trolleyAcceleration = 0;
         this.trolleyDirection = 0;
         this.previousTrolleyVelocity = 0;
         
         // 浮動搖桿控制
-        this.anchorX = 270;         // 搖桿中心
-        this.pointerX = 270;        // 目前手指位置
+        this.anchorX = 540;         // 搖桿中心
+        this.pointerX = 540;        // 目前手指位置
         this.offsetX = 0;           // 手指相對 anchor 的偏移
         this.isPointerDown = false;
         
         // 繩索狀態
-        this.ropeTopX = 270;          // 天車底部（繩索起點）
-        this.ropeTopY = 65;           // 天車底部 Y
-        this.ropeBottomX = 270;       // 爪子頂端
-        this.ropeBottomY = 165;       // 爪子頂端 Y
+        this.ropeTopX = 540;          // 天車底部（繩索起點）
+        this.ropeTopY = 130;          // 天車底部 Y（天車 y=100 + 30）
+        this.ropeBottomX = 540;       // 爪子頂端
+        this.ropeBottomY = 430;       // 爪子頂端 Y（ropeTopY + ropeLength）
         
-        this.ropeLength = 100;        // L_total（天車到爪子總繩長）
-        this.ropeTargetLength = 100;
+        this.ropeLength = 300;        // L_total（天車到爪子總繩長）
+        this.ropeTargetLength = 300;
         
         this.L_upper = 0;             // 天車到鐵片
-        this.L_lower = 100;           // 鐵片到爪子
+        this.L_lower = 300;           // 鐵片到爪子
         
         // 爪子狀態
         this.clawAngle = 0;
@@ -190,9 +190,9 @@ class GameScene extends Phaser.Scene {
     }
 
     createDebugSliders() {
-        const sliderX = 400;
-        const sliderWidth = 120;
-        const sliderHeight = 8;
+        const sliderX = 800;
+        const sliderWidth = 240;
+        const sliderHeight = 16;
         
         const sliders = [
             {
@@ -201,7 +201,7 @@ class GameScene extends Phaser.Scene {
                 min: 1,
                 max: 12,
                 value: PHYSICS_CONSTANTS.TROLLEY_SPEED,
-                y: 280,
+                y: 560,
                 color: 0xff6600
             },
             {
@@ -210,7 +210,7 @@ class GameScene extends Phaser.Scene {
                 min: 1,
                 max: 20,
                 value: PHYSICS_CONSTANTS.ROPE_RELEASE_SPEED,
-                y: 330,
+                y: 660,
                 color: 0x00f3ff
             },
             {
@@ -219,7 +219,7 @@ class GameScene extends Phaser.Scene {
                 min: 1,
                 max: 20,
                 value: PHYSICS_CONSTANTS.ROPE_RETRACT_SPEED,
-                y: 380,
+                y: 760,
                 color: 0x00ff88
             },
             {
@@ -228,7 +228,7 @@ class GameScene extends Phaser.Scene {
                 min: PHYSICS_CONSTANTS.PLATE_MIN_Y,
                 max: PHYSICS_CONSTANTS.PLATE_MAX_Y,
                 value: PHYSICS_CONSTANTS.PLATE_HEIGHT,
-                y: 430,
+                y: 860,
                 color: 0x888888,
                 onChange: (value) => {
                     this.plateY = value;
@@ -245,7 +245,7 @@ class GameScene extends Phaser.Scene {
                 sliderWidth, sliderHeight,
                 0x333333
             );
-            track.setStrokeStyle(1, 0x666666);
+            track.setStrokeStyle(2, 0x666666);
             
             // 填充
             const fill = this.add.rectangle(
@@ -257,16 +257,16 @@ class GameScene extends Phaser.Scene {
             // 把手
             const handle = this.add.circle(
                 sliderX, cfg.y,
-                10, 0xffffff
+                20, 0xffffff
             );
-            handle.setStrokeStyle(2, cfg.color);
+            handle.setStrokeStyle(4, cfg.color);
             handle.setInteractive({ draggable: true, useHandCursor: true });
             
             // 標籤
             const label = this.add.text(
-                sliderX + sliderWidth + 10, cfg.y,
+                sliderX + sliderWidth + 20, cfg.y,
                 `${cfg.label}: ${cfg.value.toFixed(1)}`,
-                { font: '12px Arial', fill: '#ffffff' }
+                { font: '24px Arial', fill: '#ffffff' }
             ).setOrigin(0, 0.5);
             
             const sliderObj = {
@@ -326,85 +326,87 @@ class GameScene extends Phaser.Scene {
         });
         
         // 標題
-        this.add.text(sliderX, 250, '⚙️ 參數調整', {
-            font: 'bold 14px Arial',
+        this.add.text(sliderX, 500, '⚙️ 參數調整', {
+            font: 'bold 28px Arial',
             fill: '#00f3ff'
         }).setOrigin(0, 0.5);
     }
 
     
     createBackground() {
-        this.add.rectangle(270, 480, 540, 960, 0x1a1a1a);
+        this.add.rectangle(540, 960, 1080, 1920, 0x1a1a1a);
         
         // 軌道
         const trackGraphics = this.add.graphics();
         trackGraphics.lineStyle(4, 0x555555);
-        trackGraphics.moveTo(10, 50);
-        trackGraphics.lineTo(530, 50);
+        trackGraphics.moveTo(20, 100);
+        trackGraphics.lineTo(1060, 100);
         trackGraphics.strokePath();
         trackGraphics.lineStyle(2, 0x333333);
-        trackGraphics.moveTo(10, 55);
-        trackGraphics.lineTo(530, 55);
+        trackGraphics.moveTo(20, 110);
+        trackGraphics.lineTo(1060, 110);
         trackGraphics.strokePath();
         
         // 網格
         const gridGraphics = this.add.graphics();
         gridGraphics.lineStyle(1, 0x333333, 0.3);
-        for (let x = 0; x <= 540; x += 30) {
+        for (let x = 0; x <= 1080; x += 60) {
             gridGraphics.moveTo(x, 0);
-            gridGraphics.lineTo(x, 960);
+            gridGraphics.lineTo(x, 1920);
         }
-        for (let y = 0; y <= 960; y += 30) {
+        for (let y = 0; y <= 1920; y += 60) {
             gridGraphics.moveTo(0, y);
-            gridGraphics.lineTo(540, y);
+            gridGraphics.lineTo(1080, y);
         }
         gridGraphics.strokePath();
         
         // 洞口
-        this.holeWidth = (PHYSICS_CONSTANTS.HOLE_WIDTH_PERCENT / 100) * 540;
+        this.holeWidth = (PHYSICS_CONSTANTS.HOLE_WIDTH_PERCENT / 100) * 1080;
         const holeGraphics = this.add.graphics();
         holeGraphics.fillStyle(0xff00ff, 0.2);
-        holeGraphics.fillRect(0, 816, this.holeWidth, 144);
+        holeGraphics.fillRect(0, 1632, this.holeWidth, 288);
         holeGraphics.lineStyle(2, 0xff00ff, 0.5);
-        holeGraphics.strokeRect(0, 816, this.holeWidth, 144);
+        holeGraphics.strokeRect(0, 1632, this.holeWidth, 288);
         
         // 地面
-        this.floorY = 816;
+        this.floorY = 1632;
         const groundGraphics = this.add.graphics();
         groundGraphics.fillStyle(0x00f3ff, 1);
-        groundGraphics.fillRect(0, this.floorY, 540, 5);
+        groundGraphics.fillRect(0, this.floorY, 1080, 10);
         
         // GOAL文字
-        this.add.text(this.holeWidth / 2, 880, 'GOAL', {
-            font: 'bold 24px Arial',
+        this.add.text(this.holeWidth / 2, 1760, 'GOAL', {
+            font: 'bold 48px Arial',
             fill: '#ff00ff'
         }).setOrigin(0.5);
     }
     
     createPrizes() {
         INITIAL_PRIZES.forEach(prizeData => {
-            const x = (prizeData.x / 100) * 540;
-            const y = 960 - (prizeData.y / 100) * 960;
+            const x = (prizeData.x / 100) * 1080;
+            const y = 1920 - (prizeData.y / 100) * 1920;
             
             const container = this.add.container(x, y);
             
+            const size = prizeData.size * 2;
+            
             let prizeBody;
             if (prizeData.category === 'Jewel') {
-                prizeBody = this.add.polygon(0, 0, this.createJewelPoints(prizeData.size), prizeData.color);
+                prizeBody = this.add.polygon(0, 0, this.createJewelPoints(size), prizeData.color);
             } else if (prizeData.category === 'Toy') {
-                prizeBody = this.add.rectangle(0, 0, prizeData.size * 2, prizeData.size * 2.5, prizeData.color);
+                prizeBody = this.add.rectangle(0, 0, size * 2, size * 2.5, prizeData.color);
             } else {
-                prizeBody = this.add.circle(0, 0, prizeData.size, prizeData.color);
+                prizeBody = this.add.circle(0, 0, size, prizeData.color);
             }
-            prizeBody.setStrokeStyle(2, 0xffffff, 0.3);
+            prizeBody.setStrokeStyle(4, 0xffffff, 0.3);
             
             const prizeText = this.add.text(0, 0, prizeData.name.split(' ')[0], {
-                font: 'bold 10px Arial',
+                font: 'bold 20px Arial',
                 fill: '#ffffff'
             }).setOrigin(0.5);
             
             container.add([prizeBody, prizeText]);
-            container.setSize(prizeData.size * 2, prizeData.size * 2);
+            container.setSize(size * 2, size * 2);
             container.setData('id', prizeData.id);
             container.setData('weight', prizeData.weight);
             
@@ -430,7 +432,7 @@ class GameScene extends Phaser.Scene {
     }
     
     createTrolley() {
-        this.trolley = this.add.container(this.trolleyX, 50);
+        this.trolley = this.add.container(this.trolleyX, 100);
         
         const trolleyGraphics = this.add.graphics();
         trolleyGraphics.fillStyle(0xff6600, 1);
@@ -504,40 +506,110 @@ class GameScene extends Phaser.Scene {
     
     drawClawLeft() {
         this.clawLeft.clear();
-        const openAngle = this.clawOpenAmount * PHYSICS_CONSTANTS.CLAW_OPEN_ANGLE;
-        const rad = Phaser.Math.DegToRad(openAngle);
         
-        this.clawLeft.fillStyle(0x666666, 1);
-        this.clawLeft.fillRoundedRect(-30, 25, 20, 50, 8);
-        this.clawLeft.save();
-        this.clawLeft.translateCanvas(-20, 65);
-        this.clawLeft.rotateCanvas(rad);
-        this.clawLeft.fillRoundedRect(-10, 0, 20, 30, 5);
-        this.clawLeft.restore();
+        const maxAngle = PHYSICS_CONSTANTS.CLAW_OPEN_ANGLE;
+        const openAngle = maxAngle * this.clawOpenAmount;
+        
+        // 上段角度（相對垂直線）
+        const upperAngleDeg = openAngle;
+        const upperAngleRad = Phaser.Math.DegToRad(upperAngleDeg);
+        
+        // 下段角度（相對垂直線）= 上段角度 - maxAngle
+        const lowerAngleDeg = upperAngleDeg - maxAngle;
+        const lowerAngleRad = Phaser.Math.DegToRad(lowerAngleDeg);
+        
+        // 本體中心
+        const centerX = 0;
+        const centerY = 0;
+        
+        // 上段長度、下段長度
+        const upperLength = 35;
+        const lowerLength = 45;
+        
+        // 上段終點
+        const upperEndX = centerX - Math.sin(upperAngleRad) * upperLength;
+        const upperEndY = centerY + Math.cos(upperAngleRad) * upperLength;
+        
+        // 下段終點
+        const lowerEndX = upperEndX - Math.sin(lowerAngleRad) * lowerLength;
+        const lowerEndY = upperEndY + Math.cos(lowerAngleRad) * lowerLength;
+        
+        // 畫上段（粗線）
+        this.clawLeft.lineStyle(10, 0x666666, 1);
+        this.clawLeft.beginPath();
+        this.clawLeft.moveTo(centerX, centerY);
+        this.clawLeft.lineTo(upperEndX, upperEndY);
+        this.clawLeft.strokePath();
+        
+        // 畫下段（粗線，稍微細一點）
+        this.clawLeft.lineStyle(8, 0x555555, 1);
+        this.clawLeft.beginPath();
+        this.clawLeft.moveTo(upperEndX, upperEndY);
+        this.clawLeft.lineTo(lowerEndX, lowerEndY);
+        this.clawLeft.strokePath();
+        
+        // 關節圓點
+        this.clawLeft.fillStyle(0x777777, 1);
+        this.clawLeft.fillCircle(upperEndX, upperEndY, 5);
     }
     
     drawClawRight() {
         this.clawRight.clear();
-        const openAngle = this.clawOpenAmount * PHYSICS_CONSTANTS.CLAW_OPEN_ANGLE;
-        const rad = -Phaser.Math.DegToRad(openAngle);
         
-        this.clawRight.fillStyle(0x666666, 1);
-        this.clawRight.fillRoundedRect(10, 25, 20, 50, 8);
-        this.clawRight.save();
-        this.clawRight.translateCanvas(20, 65);
-        this.clawRight.rotateCanvas(rad);
-        this.clawRight.fillRoundedRect(-10, 0, 20, 30, 5);
-        this.clawRight.restore();
+        const maxAngle = PHYSICS_CONSTANTS.CLAW_OPEN_ANGLE;
+        const openAngle = maxAngle * this.clawOpenAmount;
+        
+        // 上段角度（相對垂直線，右爪為負）
+        const upperAngleDeg = -openAngle;
+        const upperAngleRad = Phaser.Math.DegToRad(upperAngleDeg);
+        
+        // 下段角度（相對垂直線）= 上段角度 + maxAngle
+        const lowerAngleDeg = upperAngleDeg + maxAngle;
+        const lowerAngleRad = Phaser.Math.DegToRad(lowerAngleDeg);
+        
+        // 本體中心
+        const centerX = 0;
+        const centerY = 0;
+        
+        // 上段長度、下段長度
+        const upperLength = 35;
+        const lowerLength = 45;
+        
+        // 上段終點
+        const upperEndX = centerX - Math.sin(upperAngleRad) * upperLength;
+        const upperEndY = centerY + Math.cos(upperAngleRad) * upperLength;
+        
+        // 下段終點
+        const lowerEndX = upperEndX - Math.sin(lowerAngleRad) * lowerLength;
+        const lowerEndY = upperEndY + Math.cos(lowerAngleRad) * lowerLength;
+        
+        // 畫上段
+        this.clawRight.lineStyle(10, 0x666666, 1);
+        this.clawRight.beginPath();
+        this.clawRight.moveTo(centerX, centerY);
+        this.clawRight.lineTo(upperEndX, upperEndY);
+        this.clawRight.strokePath();
+        
+        // 畫下段
+        this.clawRight.lineStyle(8, 0x555555, 1);
+        this.clawRight.beginPath();
+        this.clawRight.moveTo(upperEndX, upperEndY);
+        this.clawRight.lineTo(lowerEndX, lowerEndY);
+        this.clawRight.strokePath();
+        
+        // 關節圓點
+        this.clawRight.fillStyle(0x777777, 1);
+        this.clawRight.fillCircle(upperEndX, upperEndY, 5);
     }
     
     createUI() {
-        this.statusText = this.add.text(270, 120, '按住拖動天車', {
-            font: 'bold 28px Arial',
+        this.statusText = this.add.text(540, 240, '按住拖動天車', {
+            font: 'bold 48px Arial',
             fill: '#00f3ff'
         }).setOrigin(0.5);
         
-        this.scoreText = this.add.text(270, 170, '分數: 0', {
-            font: 'bold 24px Arial',
+        this.scoreText = this.add.text(540, 340, '分數: 0', {
+            font: 'bold 40px Arial',
             fill: '#ffffff'
         }).setOrigin(0.5);
         
@@ -594,7 +666,7 @@ class GameScene extends Phaser.Scene {
     }
     
     setupColliders() {
-        const ground = this.add.rectangle(270, this.floorY, 540, 10, 0x00f3ff);
+        const ground = this.add.rectangle(540, this.floorY, 1080, 20, 0x00f3ff);
         this.physics.add.existing(ground, true);
         
         const prizeBodies = this.prizes.map(p => p.container);
@@ -666,8 +738,8 @@ class GameScene extends Phaser.Scene {
         
         // 端點標記
         this.ropeGraphics.fillStyle(0xcccccc, 1);
-        this.ropeGraphics.fillCircle(this.ropeTopX, this.ropeTopY, 4);
-        this.ropeGraphics.fillCircle(this.ropeBottomX, this.ropeBottomY, 4);
+        this.ropeGraphics.fillCircle(this.ropeTopX, this.ropeTopY, 6);
+        this.ropeGraphics.fillCircle(this.ropeBottomX, this.ropeBottomY, 6);
     }
     
     update(time, delta) {
@@ -705,14 +777,14 @@ class GameScene extends Phaser.Scene {
         
         // 更新位置
         this.trolleyX += this.trolleyVelocity;
-        this.trolleyX = Phaser.Math.Clamp(this.trolleyX, 30, 510);
+        this.trolleyX = Phaser.Math.Clamp(this.trolleyX, 60, 1020);
         
         // 更新天車視覺
         this.trolley.x = this.trolleyX;
         
         // 繩索上端（天車底部）
         this.ropeTopX = this.trolleyX;
-        this.ropeTopY = 65;
+        this.ropeTopY = 130;
         
         // 計算 L_upper 和 L_lower
         this.L_upper = this.plateY - this.ropeTopY;
@@ -799,30 +871,24 @@ class GameScene extends Phaser.Scene {
         const predictedClawX = pivotX - Math.sin(this.clawAngle) * L;
         
         if (predictedClawX <= PHYSICS_CONSTANTS.WALL_LEFT) {
-            // 爪子碰到左牆
-            // 爪子位置：pivotX - sin(θ) × L = WALL_LEFT
-            // → sin(θ) = (pivotX - WALL_LEFT) / L
-            // 因為爪子要往右（從左牆彈回），θ 應該變正
             const dx = pivotX - PHYSICS_CONSTANTS.WALL_LEFT;
             const ratio = Math.min(1, Math.max(-1, dx / L));
             const criticalAngle = Math.asin(ratio);
             
             this.clawAngle = criticalAngle;
             
-            // 角速度反轉
-            if (this.clawAngularVel < 0) {
+            if (this.clawAngularVel > 0) {
                 this.clawAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_BOUNCE;
             }
         }
         else if (predictedClawX >= PHYSICS_CONSTANTS.WALL_RIGHT) {
-            // 爪子碰到右牆
             const dx = pivotX - PHYSICS_CONSTANTS.WALL_RIGHT;
             const ratio = Math.min(1, Math.max(-1, dx / L));
             const criticalAngle = Math.asin(ratio);
             
             this.clawAngle = criticalAngle;
             
-            if (this.clawAngularVel > 0) {
+            if (this.clawAngularVel < 0) {
                 this.clawAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_BOUNCE;
             }
         }
@@ -887,13 +953,12 @@ class GameScene extends Phaser.Scene {
             }
         }
     }
-    
     checkGrab() {
         const clawTipX = this.clawContainer.x;
         const clawTipY = this.clawContainer.y + 65;
         
         let caughtPrize = null;
-        let minDistance = 40 * (1 - this.clawOpenAmount * 0.5);
+        let minDistance = 60 * (1 - this.clawOpenAmount * 0.5);
         
         this.prizes.forEach(prize => {
             if (prize.isCaught || prize.collected) return;
@@ -948,7 +1013,7 @@ class GameScene extends Phaser.Scene {
     
     completeLifting() {
         if (this.caughtPrizeId && this.caughtPrize) {
-            const clawXPercent = (this.clawContainer.x / 540) * 100;
+            const clawXPercent = (this.clawContainer.x / 1080) * 100;
             
             if (clawXPercent <= PHYSICS_CONSTANTS.HOLE_WIDTH_PERCENT) {
                 this.score += 100;
@@ -1028,23 +1093,23 @@ class GameScene extends Phaser.Scene {
         // 更新搖桿視覺
         this.deadZoneGraphics.clear();
         if (this.isPointerDown && this.gameState === 'idle') {
-            this.deadZoneGraphics.lineStyle(2, 0x00ff00, 0.6);
-            this.deadZoneGraphics.strokeCircle(this.anchorX, 480, 6);
+            this.deadZoneGraphics.lineStyle(4, 0x00ff00, 0.6);
+            this.deadZoneGraphics.strokeCircle(this.anchorX, 960, 12);
             
-            this.deadZoneGraphics.lineStyle(1, 0xffff00, 0.4);
+            this.deadZoneGraphics.lineStyle(2, 0xffff00, 0.4);
             this.deadZoneGraphics.strokeRect(
                 this.anchorX - PHYSICS_CONSTANTS.DEAD_ZONE, 0,
-                PHYSICS_CONSTANTS.DEAD_ZONE * 2, 960
+                PHYSICS_CONSTANTS.DEAD_ZONE * 2, 1920
             );
             
-            this.deadZoneGraphics.lineStyle(1, 0xff0000, 0.3);
+            this.deadZoneGraphics.lineStyle(2, 0xff0000, 0.3);
             this.deadZoneGraphics.strokeRect(
                 this.anchorX - PHYSICS_CONSTANTS.DRAG_THRESHOLD, 0,
-                PHYSICS_CONSTANTS.DRAG_THRESHOLD * 2, 960
+                PHYSICS_CONSTANTS.DRAG_THRESHOLD * 2, 1920
             );
             
             this.deadZoneGraphics.fillStyle(0x00ffff, 0.8);
-            this.deadZoneGraphics.fillCircle(this.pointerX, 480, 4);
+            this.deadZoneGraphics.fillCircle(this.pointerX, 960, 8);
         }
     }
 }
@@ -1053,14 +1118,14 @@ class GameScene extends Phaser.Scene {
 const config = {
     type: Phaser.AUTO,
     parent: 'game-container',
-    width: 540,
-    height: 960,
+    width: 1080,
+    height: 1920,
     backgroundColor: '#000000',
     scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
-        width: 540,
-        height: 960
+        width: 1080,
+        height: 1920
     },
     physics: {
         default: 'arcade',
