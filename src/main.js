@@ -735,9 +735,7 @@ class GameScene extends Phaser.Scene {
     }
     
     updateVisuals() {
-        // ✅ 修正：位置計算反轉
-        // θ 正值 = 繩索向右傾斜 = 爪子向左偏移
-        // θ 負值 = 繩索向左傾斜 = 爪子向右偏移
+        // 位置計算：θ 正值 = 繩索向右傾斜 = 爪子向左偏移
         this.ropeBottomX = this.ropeTopX - Math.sin(this.clawAngle) * this.ropeLength;
         this.ropeBottomY = this.ropeTopY + Math.cos(this.clawAngle) * this.ropeLength;
         
@@ -773,7 +771,7 @@ class GameScene extends Phaser.Scene {
                 PHYSICS_CONSTANTS.DRAG_THRESHOLD * 2, 960
             );
             
-            // 目前 offset 指示
+            // 目前手指位置指示
             this.deadZoneGraphics.fillStyle(0x00ffff, 0.8);
             this.deadZoneGraphics.fillCircle(this.pointerX, 480, 4);
         }
