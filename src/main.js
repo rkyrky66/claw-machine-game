@@ -17,10 +17,10 @@ const PHYSICS_CONSTANTS = {
     
     // 爪子物理（單擺模型）
     CLAW_GRAVITY: 0.5,
-    PENDULUM_DAMPING: 0.02,
-    AIR_RESISTANCE: 0.995,
+    PENDULUM_DAMPING: 0.005,     // 從 0.02 降到 0.005（減少阻尼）
+    AIR_RESISTANCE: 0.999,       // 從 0.995 升到 0.999（減少空氣阻力）
     SLANT_LIMIT: 40,
-    BOUNDARY_BOUNCE: 0.25,
+    BOUNDARY_BOUNCE: 0.4,        // 從 0.25 升到 0.4（撞牆反彈更明顯）
     WALL_LEFT: 30,
     WALL_RIGHT: 510,
     
