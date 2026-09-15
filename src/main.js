@@ -518,9 +518,9 @@ class GameScene extends Phaser.Scene {
         const lowerAngleDeg = upperAngleDeg - maxAngle;
         const lowerAngleRad = Phaser.Math.DegToRad(lowerAngleDeg);
         
-        // 本體中心
-        const centerX = 0;
-        const centerY = 0;
+        // 旋轉中心：本體左下角
+        const centerX = -25;
+        const centerY = 35;
         
         // 上段長度、下段長度
         const upperLength = 35;
@@ -567,9 +567,9 @@ class GameScene extends Phaser.Scene {
         const lowerAngleDeg = upperAngleDeg + maxAngle;
         const lowerAngleRad = Phaser.Math.DegToRad(lowerAngleDeg);
         
-        // 本體中心
-        const centerX = 0;
-        const centerY = 0;
+        // 旋轉中心：本體右下角
+        const centerX = 25;
+        const centerY = 35;
         
         // 上段長度、下段長度
         const upperLength = 35;
