@@ -768,8 +768,8 @@ class GameScene extends Phaser.Scene {
             // 重力恢復力矩（單擺方程，用 L_lower）
             const gravityTorque = -(g / L) * Math.sin(theta);
             
-            // 天車驅動力矩（鐵片加速向右 → 爪子慣性向左 → 負向）
-            const driveTorque = -(aTop / L) * Math.cos(theta);
+            // 天車驅動力矩（天車向左加速 → 爪子往右落後 → θ 負）
+            const driveTorque = (aTop / L) * Math.cos(theta);
             
             // 速度相關阻尼：低速時阻尼減弱
             const speedFactor = Math.min(1, Math.abs(thetaVel) * 20);
@@ -792,31 +792,37 @@ class GameScene extends Phaser.Scene {
         }
     }
 
-        applyWallCollision() {
+    applyWallCollision() {
         // 用鐵片為支點計算爪子位置
         const pivotX = this.trolleyX;
         const L = this.L_lower;
         const predictedClawX = pivotX - Math.sin(this.clawAngle) * L;
         
         if (predictedClawX <= PHYSICS_CONSTANTS.WALL_LEFT) {
+            // 爪子碰到左牆
+            // 爪子位置：pivotX - sin(θ) × L = WALL_LEFT
+            // → sin(θ) = (pivotX - WALL_LEFT) / L
+            // 因為爪子要往右（從左牆彈回），θ 應該變正
             const dx = pivotX - PHYSICS_CONSTANTS.WALL_LEFT;
-            const dy = Math.sqrt(Math.max(1, L * L - dx * dx));
-            const criticalAngle = Math.atan2(dx, dy);
+            const ratio = Math.min(1, Math.max(-1, dx / L));
+            const criticalAngle = Math.asin(ratio);
             
             this.clawAngle = criticalAngle;
             
-            if (this.clawAngularVel > 0) {
+            // 角速度反轉
+            if (this.clawAngularVel < 0) {
                 this.clawAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_BOUNCE;
             }
         }
         else if (predictedClawX >= PHYSICS_CONSTANTS.WALL_RIGHT) {
+            // 爪子碰到右牆
             const dx = pivotX - PHYSICS_CONSTANTS.WALL_RIGHT;
-            const dy = Math.sqrt(Math.max(1, L * L - dx * dx));
-            const criticalAngle = Math.atan2(dx, dy);
+            const ratio = Math.min(1, Math.max(-1, dx / L));
+            const criticalAngle = Math.asin(ratio);
             
             this.clawAngle = criticalAngle;
             
-            if (this.clawAngularVel < 0) {
+            if (this.clawAngularVel > 0) {
                 this.clawAngularVel *= -PHYSICS_CONSTANTS.BOUNDARY_BOUNCE;
             }
         }
