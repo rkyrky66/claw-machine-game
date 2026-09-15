@@ -1,9 +1,12 @@
 // ==================== 物理常數 ====================
 const PHYSICS_CONSTANTS = {
-    // 控制系統
+    // 控制系統（可在 UI 調整）
     DEAD_ZONE: 10,
     DRAG_THRESHOLD: 40,
-    TROLLEY_SPEED: 4,
+    TROLLEY_SPEED: 4,        // 天車移動速度
+    
+    // 繩索速度（可在 UI 調整）
+    // ROPE_RELEASE_SPEED 和 ROPE_RETRACT_SPEED 已存在
     
     // 繩索參數
     ROPE_MAX_LENGTH: 700,
@@ -149,12 +152,136 @@ class GameScene extends Phaser.Scene {
         this.createRope();
         this.createClaw();
         this.createUI();
+        this.createDebugSliders();   // ← 新增
         this.setupInput();
         this.setupColliders();
         this.validation = new ValidationSystem(this);
         this.setupConsoleCommands();
     }
-    
+        createDebugSliders() {
+        const sliderX = 400;      // 滑桿起始 X
+        const sliderWidth = 120;  // 滑桿寬度
+        const sliderHeight = 8;   // 滑桿高度
+        
+        const sliders = [
+            {
+                label: '天車速度',
+                key: 'TROLLEY_SPEED',
+                min: 1,
+                max: 12,
+                value: PHYSICS_CONSTANTS.TROLLEY_SPEED,
+                y: 300,
+                color: 0xff6600
+            },
+            {
+                label: '下爪速度',
+                key: 'ROPE_RELEASE_SPEED',
+                min: 1,
+                max: 20,
+                value: PHYSICS_CONSTANTS.ROPE_RELEASE_SPEED,
+                y: 360,
+                color: 0x00f3ff
+            },
+            {
+                label: '上爪速度',
+                key: 'ROPE_RETRACT_SPEED',
+                min: 1,
+                max: 20,
+                value: PHYSICS_CONSTANTS.ROPE_RETRACT_SPEED,
+                y: 420,
+                color: 0x00ff88
+            }
+        ];
+        
+        this.sliders = [];
+        
+        sliders.forEach(cfg => {
+            // 背景
+            const track = this.add.rectangle(
+                sliderX + sliderWidth / 2, cfg.y,
+                sliderWidth, sliderHeight,
+                0x333333
+            );
+            track.setStrokeStyle(1, 0x666666);
+            
+            // 填充
+            const fill = this.add.rectangle(
+                sliderX, cfg.y,
+                0, sliderHeight,
+                cfg.color
+            ).setOrigin(0, 0.5);
+            
+            // 把手
+            const handle = this.add.circle(
+                sliderX, cfg.y,
+                10, 0xffffff
+            );
+            handle.setStrokeStyle(2, cfg.color);
+            handle.setInteractive({ draggable: true, useHandCursor: true });
+            
+            // 標籤
+            const label = this.add.text(
+                sliderX + sliderWidth + 10, cfg.y,
+                `${cfg.label}: ${cfg.value.toFixed(1)}`,
+                { font: '12px Arial', fill: '#ffffff' }
+            ).setOrigin(0, 0.5);
+            
+            // 儲存參照
+            const sliderObj = {
+                cfg, track, fill, handle, label,
+                sliderX, sliderWidth,
+                updateVisual: () => {
+                    const percent = (cfg.value - cfg.min) / (cfg.max - cfg.min);
+                    handle.x = sliderX + percent * sliderWidth;
+                    fill.width = percent * sliderWidth;
+                    label.setText(`${cfg.label}: ${cfg.value.toFixed(1)}`);
+                }
+            };
+            
+            // 拖曳事件
+            this.input.setDraggable(handle);
+            
+            handle.on('drag', (pointer, dragX, dragY) => {
+                const clampedX = Phaser.Math.Clamp(dragX, sliderX, sliderX + sliderWidth);
+                handle.x = clampedX;
+                
+                const percent = (clampedX - sliderX) / sliderWidth;
+                const newValue = cfg.min + percent * (cfg.max - cfg.min);
+                cfg.value = newValue;
+                
+                // 即時更新參數
+                PHYSICS_CONSTANTS[cfg.key] = newValue;
+                
+                sliderObj.updateVisual();
+                console.log(`⚙️ ${cfg.label} = ${newValue.toFixed(2)}`);
+            });
+            
+            // 點擊軌道也能跳轉
+            track.setInteractive();
+            track.on('pointerdown', (pointer) => {
+                const clampedX = Phaser.Math.Clamp(pointer.x, sliderX, sliderX + sliderWidth);
+                handle.x = clampedX;
+                
+                const percent = (clampedX - sliderX) / sliderWidth;
+                const newValue = cfg.min + percent * (cfg.max - cfg.min);
+                cfg.value = newValue;
+                
+                PHYSICS_CONSTANTS[cfg.key] = newValue;
+                sliderObj.updateVisual();
+            });
+            
+            // 初始化視覺
+            sliderObj.updateVisual();
+            
+            this.sliders.push(sliderObj);
+        });
+        
+        // 標題
+        this.add.text(sliderX, 270, '⚙️ 參數調整', {
+            font: 'bold 14px Arial',
+            fill: '#00f3ff'
+        }).setOrigin(0, 0.5);
+    }
     createBackground() {
         this.add.rectangle(270, 480, 540, 960, 0x1a1a1a);
         
